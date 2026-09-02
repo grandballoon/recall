@@ -125,6 +125,21 @@
   .lib-item .it-meta { font-size: 11px; color: var(--ink-faint); display: flex; gap: 6px; align-items: center; }
   .lib-item .it-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--note-line); flex: none; }
   .lib-item .it-dot[data-n="0"] { display: none; }
+  .lib-row { position: relative; display: flex; }
+  .lib-row > .lib-item { flex: 1; min-width: 0; }
+  .it-rename {
+    position: absolute; top: 8px; right: 8px; font-family: "Inter", sans-serif;
+    font-size: 11px; color: var(--ink-faint); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 2px 7px;
+    cursor: pointer; opacity: 0; transition: opacity .12s;
+  }
+  .lib-row:hover .it-rename, .it-rename:focus-visible { opacity: 1; }
+  .it-rename:hover { color: var(--ink); border-color: var(--rule-strong); }
+  .it-title-input {
+    flex: 1; min-width: 0; font-family: "Inter", sans-serif; font-size: 13px; font-weight: 600;
+    color: var(--ink); background: var(--paper); border: 1px solid var(--rule-strong);
+    border-radius: 9px; padding: 10px 12px; outline: none;
+  }
   .masthead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 44px; }
   .masthead h1 {
     font-weight: 600; font-size: 20px; letter-spacing: -.01em; margin: 0;
@@ -316,8 +331,20 @@
     padding: 9px 16px; border-radius: 9px; opacity: 0; transition: all .25s; z-index: 60; pointer-events:none;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .test-dot {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    z-index: 9999;
+    pointer-events: none;
+  }
 </style>
 <script type="application/json" id="recall-data"></script>
+<div class="test-dot" aria-hidden="true"></div>
 <div id="shell">
   <div class="rail left" id="railLeft">
     <button class="railNotes count" data-count="0" title="Comments">Comments</button>
@@ -439,6 +466,7 @@ function loadEntry(id){
   state.seq = e.seq || 1;
   state.stackPath = []; state.cursor = 0;
   editor.innerHTML = e.editorHTML || '';
+  editor.querySelectorAll('mark.hl').forEach(m => { if (!m.dataset.len) m.dataset.len = String(m.textContent.length); });
   const pt = $('#promptText'); if (pt) pt.textContent = e.prompt || 'Untitled';
   closeWing('comments');
   refreshCount();
@@ -476,6 +504,8 @@ function renderLibrary(){
   // most-recently-updated first
   const items = [...state.library].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
   for (const e of items){
+    const row = document.createElement('div');
+    row.className = 'lib-row';
     const btn = document.createElement('button');
     btn.className = 'lib-item' + (e.id === state.activeId ? ' active' : '');
     btn.dataset.entryId = e.id;
@@ -485,8 +515,47 @@ function renderLibrary(){
     btn.querySelector('.it-title').textContent = title;
     btn.querySelector('.it-n').textContent = n ? `${n} open` : 'clear';
     btn.onclick = () => { if (e.id !== state.activeId) loadEntry(e.id); };
-    list.appendChild(btn);
+    btn.ondblclick = (ev) => { ev.preventDefault(); beginRename(row, e.id); };
+    const ren = document.createElement('button');
+    ren.className = 'it-rename';
+    ren.type = 'button';
+    ren.textContent = 'Rename';
+    ren.title = 'Rename this entry';
+    ren.onclick = (ev) => { ev.stopPropagation(); beginRename(row, e.id); };
+    row.appendChild(btn);
+    row.appendChild(ren);
+    list.appendChild(row);
   }
+}
+// swap an entry's shelf row for an inline title field
+function beginRename(row, id){
+  if (row.querySelector('.it-title-input')) return;
+  const e = state.library.find(x => x.id === id); if (!e) return;
+  const btn = row.querySelector('.lib-item');
+  const ren = row.querySelector('.it-rename');
+  const input = document.createElement('input');
+  input.className = 'it-title-input';
+  input.value = e.title || (e.prompt ? e.prompt.slice(0, 40) : '');
+  input.placeholder = 'Entry name';
+  btn.style.display = 'none';
+  if (ren) ren.style.display = 'none';
+  row.insertBefore(input, btn);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = (save) => {
+    if (done) return; done = true;
+    if (save){
+      e.title = input.value.trim();
+      persist();
+    }
+    renderLibrary();
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter'){ ev.preventDefault(); commit(true); }
+    else if (ev.key === 'Escape'){ ev.preventDefault(); commit(false); }
+  });
+  input.addEventListener('blur', () => commit(true));
 }
 function applyLibVisibility(){
   const shell = $('#shell');
@@ -538,7 +607,7 @@ $('#asker').addEventListener('click', async () => {
   const mark = document.createElement('mark');
   mark.className = 'hl note';
   mark.dataset.commentId = id;
-  try { pendingRange.surroundContents(mark); }
+  try { pendingRange.surroundContents(mark); mark.dataset.len = String(mark.textContent.length); }
   catch(_) { /* selection spanned block boundaries — skip wrap */ }
   $('#asker').style.display = 'none';
   window.getSelection().removeAllRanges();
@@ -591,7 +660,7 @@ Reply with ONLY a JSON object:
   try {
     const data = await claudeSample.json(prompt, { modelTier: 'default' });
     state.comments[id].verdict = ['wrong','imprecise','missing','solid'].includes(data.verdict) ? data.verdict : 'imprecise';
-    state.comments[id].body = String(data.note || '').trim() || 'No comment returned.';
+    state.comments[id].body = decodeUnicode(String(data.note || '').trim()) || 'No comment returned.';
   } catch (e) {
     if (e.code === 'not_granted' || e.code === 'sampling_disabled') {
       const demo = demoFeedback(quote);
@@ -829,6 +898,7 @@ function refreshCount(){
 }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function decodeUnicode(s){ return (s||'').replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))); }
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
 
 /* keyboard: ← → to walk the stack when wing open */
@@ -913,8 +983,64 @@ function hydrateFromData(){
   } catch(_){ return false; }
 }
 
+/* highlights should never grow by text typed off their end — only by
+   edits made within the span. Detect an insertion whose caret lands
+   exactly at a mark's trailing edge and pop the new text back out. */
+function fixHighlightBoundary(e){
+  const sel = window.getSelection();
+  if (!sel || !sel.isCollapsed || sel.rangeCount === 0) return;
+  const node = sel.anchorNode;
+  if (!node) return;
+  const hostEl = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const mark = hostEl && hostEl.closest ? hostEl.closest('mark.hl') : null;
+  if (!mark || !editor.contains(mark)) return;
+
+  mark.normalize();
+  const full = mark.textContent;
+
+  // deletions (and anything else) just resync the tracked length so a
+  // later append is measured against the span's real current content.
+  if (!e || !e.inputType || !e.inputType.startsWith('insert')) {
+    mark.dataset.len = String(full.length);
+    return;
+  }
+
+  const oldLen = mark.dataset.len ? parseInt(mark.dataset.len, 10) : full.length;
+
+  // where is the caret, measured as an offset into the mark's full text?
+  const toCaret = document.createRange();
+  toCaret.selectNodeContents(mark);
+  toCaret.setEnd(sel.anchorNode, sel.anchorOffset);
+  const caretOffset = toCaret.toString().length;
+
+  if (caretOffset !== full.length) {
+    // caret isn't at the trailing edge — this is a legitimate interior
+    // edit, which is allowed to grow or shrink the span.
+    mark.dataset.len = String(full.length);
+    return;
+  }
+  if (full.length <= oldLen) {
+    // nothing was actually appended (e.g. a no-op or a trimmed edit).
+    mark.dataset.len = String(full.length);
+    return;
+  }
+
+  // pull the newly-typed tail back out of the highlight.
+  const appended = full.slice(oldLen);
+  mark.textContent = full.slice(0, oldLen);
+  mark.dataset.len = String(oldLen);
+  const tail = document.createTextNode(appended);
+  mark.after(tail);
+
+  const r = document.createRange();
+  r.setStart(tail, tail.length);
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
 /* save on prose edits */
-editor.addEventListener('input', () => { persist(); });
+editor.addEventListener('input', (e) => { fixHighlightBoundary(e); persist(); });
 
 /* ---------- boot ---------- */
 (async function boot(){
