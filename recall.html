@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recall — a desk for testing what you know</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f7f6f2;
+    --paper-edge: #efece4;
+    --ink: #21262e;
+    --ink-soft: #565f6b;
+    --ink-faint: #8b93a0;
+    --rule: #e2ded4;
+    --rule-strong: #d2ccbe;
+    /* your own selection */
+    --sel: #b9d0e8;
+    --sel-line: #5b83ad;
+    /* has feedback attached */
+    --note: #f0d9a8;
+    --note-line: #c69a45;
+    --note-wash: #fbf3df;
+    --accent: #3a6098;
+    --danger: #b4694f;
+    --shadow: 20px 0 60px -30px rgba(33,38,46,.28);
+    font-size: 17px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1a1d22;
+      --paper-edge: #23272e;
+      --ink: #e7e4db;
+      --ink-soft: #a3aab5;
+      --ink-faint: #6f7783;
+      --rule: #2c313a;
+      --rule-strong: #3a414c;
+      --sel: #274763;
+      --sel-line: #6f9ac8;
+      --note: #5a4a28;
+      --note-line: #c69a45;
+      --note-wash: #2a2620;
+      --accent: #7ea6d8;
+      --danger: #d08363;
+      --shadow: 20px 0 60px -30px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #1a1d22; --paper-edge: #23272e; --ink: #e7e4db; --ink-soft: #a3aab5;
+    --ink-faint: #6f7783; --rule: #2c313a; --rule-strong: #3a414c;
+    --sel: #274763; --sel-line: #6f9ac8; --note: #5a4a28; --note-line: #c69a45;
+    --note-wash: #2a2620; --accent: #7ea6d8; --danger: #d08363;
+    --shadow: 20px 0 60px -30px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Spectral", Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button { font-family: "Inter", system-ui, sans-serif; cursor: pointer; }
+  ::selection { background: var(--sel); }
+
+  /* ---- shell ---- */
+  #shell { display: flex; height: 100%; position: relative; }
+
+  /* ---- rail (collapsed wing handles) ---- */
+  .rail {
+    width: 46px; flex: none; background: var(--paper-edge);
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 14px; gap: 6px; z-index: 5;
+  }
+  .rail.right { border-left: 1px solid var(--rule); }
+  .rail.left { border-right: 1px solid var(--rule); }
+  /* which handle each rail shows depends on the comments side */
+  #shell[data-comments-side="left"] #railLeft .railRef,
+  #shell[data-comments-side="left"] #railRight .railNotes,
+  #shell[data-comments-side="right"] #railLeft .railNotes,
+  #shell[data-comments-side="right"] #railRight .railRef { display: none; }
+  .rail button {
+    writing-mode: vertical-rl; text-orientation: mixed;
+    background: none; border: 1px solid transparent; border-radius: 7px;
+    color: var(--ink-soft); font-size: 11.5px; letter-spacing: .04em;
+    padding: 12px 6px; font-weight: 500;
+  }
+  .rail button:hover { background: var(--paper); border-color: var(--rule); color: var(--ink); }
+  .rail button.count::after {
+    content: attr(data-count); display: inline-block; writing-mode: horizontal-tb;
+    margin-top: 6px; background: var(--note-line); color: #fff; font-size: 9.5px;
+    min-width: 15px; height: 15px; line-height: 15px; border-radius: 8px; text-align: center;
+  }
+  .rail button.count[data-count="0"]::after { display: none; }
+
+  /* ---- writing surface ---- */
+  #surface {
+    flex: 1; overflow-y: auto; display: flex; justify-content: center;
+    padding: 0 32px;
+  }
+  #sheet { width: 100%; max-width: 660px; padding: 88px 0 240px; }
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 44px; }
+  .masthead h1 {
+    font-weight: 600; font-size: 20px; letter-spacing: -.01em; margin: 0;
+  }
+  .mast-right { display: flex; align-items: center; gap: 14px; }
+  .masthead .sub { font-family: "Inter", sans-serif; font-size: 12.5px; color: var(--ink-faint); }
+  .gear {
+    background: none; border: 1px solid var(--rule); border-radius: 8px;
+    width: 32px; height: 32px; display: grid; place-items: center;
+    color: var(--ink-soft); transition: color .15s, border-color .15s, background .15s;
+  }
+  .gear:hover, .gear[aria-expanded="true"] { color: var(--ink); border-color: var(--rule-strong); background: var(--paper-edge); }
+
+  .settings-pop {
+    font-family: "Inter", sans-serif; margin: -28px 0 30px auto; max-width: 340px;
+    background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 12px;
+    box-shadow: 0 16px 40px -20px rgba(33,38,46,.4); padding: 15px 16px;
+    animation: popIn .16s ease;
+  }
+  @keyframes popIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .settings-row { display: flex; align-items: center; gap: 16px; justify-content: space-between; }
+  .settings-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .settings-desc { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; line-height: 1.4; }
+  .seg { display: inline-flex; background: var(--paper-edge); border: 1px solid var(--rule); border-radius: 8px; padding: 2px; flex: none; }
+  .seg-btn {
+    font-size: 12px; font-weight: 500; border: none; background: none; color: var(--ink-soft);
+    padding: 5px 12px; border-radius: 6px;
+  }
+  .seg-btn[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); font-weight: 600; }
+  .prompt-line {
+    font-family: "Inter", sans-serif; font-size: 13px; color: var(--ink-soft);
+    background: var(--paper-edge); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 11px 15px; margin-bottom: 30px; line-height: 1.5;
+  }
+  .prompt-line b { color: var(--ink); font-weight: 600; }
+
+  #editor {
+    font-size: 1.12rem; line-height: 1.72; outline: none; color: var(--ink);
+    caret-color: var(--accent); min-height: 300px;
+  }
+  #editor:empty::before {
+    content: "Explain it in your own words — as if teaching it to someone. Highlight any span and ask for a check.";
+    color: var(--ink-faint); font-style: italic;
+  }
+  #editor p { margin: 0 0 1.15em; }
+
+  mark.hl {
+    background: var(--sel); border-radius: 3px; padding: .05em 0;
+    box-shadow: 0 1px 0 var(--sel-line); cursor: pointer; transition: background .15s;
+  }
+  mark.hl.note { background: var(--note); box-shadow: 0 1px 0 var(--note-line); }
+  mark.hl.lit { background: var(--sel-line); color: #fff; box-shadow: none; }
+  mark.hl.note.lit { background: var(--note-line); color: #fff; }
+
+  /* floating ask button on selection */
+  #asker {
+    position: fixed; z-index: 40; transform: translate(-50%, -100%);
+    display: none; background: var(--ink); color: var(--paper);
+    border: none; border-radius: 8px; padding: 8px 13px; font-size: 12.5px;
+    font-weight: 500; box-shadow: 0 8px 24px -8px rgba(0,0,0,.4); white-space: nowrap;
+  }
+  #asker::after {
+    content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px;
+    background: var(--ink); transform: translateX(-50%) rotate(45deg);
+  }
+  #asker:hover { background: var(--accent); }
+
+  /* ---- wings ---- */
+  .wing {
+    position: absolute; top: 0; bottom: 0; width: min(430px, 82vw);
+    background: var(--paper); z-index: 20; display: flex; flex-direction: column;
+    transition: transform .34s cubic-bezier(.22,.61,.36,1);
+  }
+  .wing.left { left: 46px; box-shadow: var(--shadow); transform: translateX(-112%); border-right: 1px solid var(--rule-strong); }
+  .wing.right { right: 46px; box-shadow: -20px 0 60px -30px rgba(33,38,46,.28); transform: translateX(112%); border-left: 1px solid var(--rule-strong); }
+  .wing.open { transform: translateX(0); }
+
+  .wing-head {
+    flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 16px 16px 14px; border-bottom: 1px solid var(--rule);
+    font-family: "Inter", sans-serif;
+  }
+  .wing-head .title { font-size: 13px; font-weight: 600; letter-spacing: .01em; flex: 1; }
+  .wing-head .title span { color: var(--ink-faint); font-weight: 500; }
+
+  /* breadcrumb trail — the map alongside the card stack */
+  .crumbs {
+    flex: none; display: flex; align-items: center; gap: 2px;
+    padding: 9px 14px; border-bottom: 1px solid var(--rule);
+    font-family: "Inter", sans-serif; overflow-x: auto; scrollbar-width: thin;
+    background: var(--paper-edge);
+  }
+  .crumbs::-webkit-scrollbar { height: 5px; }
+  .crumbs::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 3px; }
+  .crumb {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    padding: 4px 8px; max-width: 168px; color: var(--ink-soft);
+    font-size: 12px; font-weight: 500; white-space: nowrap;
+  }
+  .crumb .vdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint); }
+  .crumb .vdot.wrong { background: #c0563a; }
+  .crumb .vdot.imprecise { background: #c69a45; }
+  .crumb .vdot.missing { background: #4f74a8; }
+  .crumb .vdot.solid { background: #4f8a58; }
+  .crumb .txt { overflow: hidden; text-overflow: ellipsis; }
+  .crumb:not(.current):hover { background: var(--paper); border-color: var(--rule); color: var(--ink); }
+  .crumb.current { color: var(--ink); font-weight: 600; cursor: default; background: var(--paper); border-color: var(--rule-strong); }
+  .crumb.root .vdot { display: none; }
+  .crumb-sep { flex: none; color: var(--ink-faint); font-size: 13px; padding: 0 1px; user-select: none; }
+  .ico {
+    background: none; border: 1px solid var(--rule); border-radius: 7px;
+    width: 30px; height: 30px; color: var(--ink-soft); font-size: 14px;
+    display: grid; place-items: center;
+  }
+  .ico:hover { border-color: var(--rule-strong); color: var(--ink); background: var(--paper-edge); }
+  .ico:disabled { opacity: .32; cursor: default; }
+
+  /* the card stack */
+  .stack { flex: 1; position: relative; overflow: hidden; }
+  .card {
+    position: absolute; inset: 0; overflow-y: auto; padding: 20px 20px 40px;
+    transition: transform .34s cubic-bezier(.22,.61,.36,1), opacity .2s;
+    font-family: "Inter", sans-serif;
+  }
+  .card.depth-shadow { }
+  .card .depth-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-faint);
+    margin-bottom: 14px;
+  }
+  .card .depth-badge .chip {
+    background: var(--paper-edge); border: 1px solid var(--rule); border-radius: 5px;
+    padding: 2px 7px; font-weight: 500; color: var(--ink-soft);
+  }
+  .quoted {
+    border-left: 3px solid var(--note-line); background: var(--note-wash);
+    padding: 9px 13px; border-radius: 0 8px 8px 0; margin-bottom: 16px;
+    font-family: "Spectral", serif; font-size: 15px; line-height: 1.5; color: var(--ink-soft);
+  }
+  .verdict {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em;
+    padding: 3px 9px; border-radius: 20px; margin-bottom: 12px;
+  }
+  .verdict.wrong { background: #f5dfd7; color: #9a4830; }
+  .verdict.imprecise { background: #f3e6c4; color: #8a6b25; }
+  .verdict.missing { background: #dfe6f0; color: #3f5f8c; }
+  .verdict.solid { background: #dcebdd; color: #3d6b45; }
+  :root[data-theme="dark"] .verdict.wrong { background: #4a2b22; color: #e0a58f; }
+  :root[data-theme="dark"] .verdict.imprecise { background: #4a3f22; color: #dcc07a; }
+  :root[data-theme="dark"] .verdict.missing { background: #26364c; color: #9dbce0; }
+  :root[data-theme="dark"] .verdict.solid { background: #294a2f; color: #96c79e; }
+
+  .card .body { font-size: 14.5px; line-height: 1.62; color: var(--ink); }
+  .card .body p { margin: 0 0 .85em; }
+  .card .body mark.hl { font-family: inherit; }
+
+  .card-tools { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .btn {
+    font-size: 12.5px; font-weight: 500; border-radius: 7px; padding: 7px 12px;
+    border: 1px solid var(--rule-strong); background: var(--paper); color: var(--ink);
+  }
+  .btn:hover { background: var(--paper-edge); }
+  .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+  .btn.ghost { border-color: transparent; color: var(--ink-soft); }
+  .btn.ghost:hover { color: var(--ink); background: var(--paper-edge); }
+
+  .hint {
+    font-size: 11.5px; color: var(--ink-faint); margin-top: 10px; line-height: 1.5;
+    font-style: normal;
+  }
+  .thinking { display: flex; align-items: center; gap: 9px; color: var(--ink-soft); font-size: 13px; padding: 8px 0; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--note-line); animation: pulse 1.1s infinite; }
+  .dot:nth-child(2){ animation-delay: .18s } .dot:nth-child(3){ animation-delay: .36s }
+  @keyframes pulse { 0%,100%{opacity:.25;transform:scale(.8)} 50%{opacity:1;transform:scale(1)} }
+  @media (prefers-reduced-motion: reduce) { *{transition:none!important; animation:none!important} }
+
+  .empty-wing { padding: 40px 24px; color: var(--ink-faint); font-family:"Inter",sans-serif; font-size: 13px; line-height:1.6; }
+  .empty-wing b { color: var(--ink-soft); font-weight:600; display:block; margin-bottom:6px; font-size:13.5px;}
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: var(--paper); font-family:"Inter",sans-serif; font-size: 12.5px;
+    padding: 9px 16px; border-radius: 9px; opacity: 0; transition: all .25s; z-index: 60; pointer-events:none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="shell">
+  <div class="rail left" id="railLeft">
+    <button class="railNotes count" data-count="0" title="Comments">Comments</button>
+    <button class="railRef" title="Notes">Notes</button>
+  </div>
+
+  <div id="surface">
+    <div id="sheet">
+      <div class="masthead">
+        <h1>Recall</h1>
+        <div class="mast-right">
+          <div class="sub">active-recall desk</div>
+          <button id="gear" class="gear" title="Settings" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8.4 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8.4a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="settings" class="settings-pop" hidden>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Comments panel</div>
+            <div class="settings-desc">Which side the comment wing opens from.</div>
+          </div>
+          <div class="seg" role="group" aria-label="Comments side">
+            <button data-side="left" class="seg-btn">Left</button>
+            <button data-side="right" class="seg-btn">Right</button>
+          </div>
+        </div>
+      </div>
+      <div id="editor" contenteditable="true" spellcheck="true"></div>
+    </div>
+  </div>
+
+  <div class="rail right" id="railRight">
+    <button class="railNotes count" data-count="0" title="Comments">Comments</button>
+    <button class="railRef" title="Notes">Notes</button>
+  </div>
+
+  <!-- LEFT WING: comments + nested card stack -->
+  <div class="wing left" id="wingLeft" aria-hidden="true">
+    <div class="wing-head">
+      <button class="ico" id="stackBack" title="Back (←)" disabled>←</button>
+      <button class="ico" id="stackFwd" title="Forward (→)" disabled>→</button>
+      <div class="title" id="wingTitle">Comment</div>
+      <button class="ico" id="wingClose" title="Close">✕</button>
+    </div>
+    <nav class="crumbs" id="crumbs" aria-label="Comment depth" hidden></nav>
+    <div class="stack" id="stack"></div>
+  </div>
+
+  <!-- RIGHT WING: placeholder for later -->
+  <div class="wing right" id="wingRight" aria-hidden="true">
+    <div class="wing-head">
+      <div class="title">Notes <span>· reserved</span></div>
+      <button class="ico" onclick="closeWing('notes')" title="Close">✕</button>
+    </div>
+    <div class="empty-wing">
+      <b>This wing is yours to define.</b>
+      A place for source material, a reference summary to check yourself against, or spaced-repetition prompts. Left empty on purpose — tell me what belongs here and I'll wire it up.
+    </div>
+  </div>
+</div>
+
+<button id="asker">Ask for a check</button>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   STATE
+   Each comment is a node in a tree. The left wing shows a STACK:
+   entering a comment pushes it; commenting-on-a-comment pushes deeper.
+   ============================================================ */
+const state = {
+  comments: {},         // id -> {id, quote, verdict, body, parentId, targetKind}
+  order: [],            // top-level comment ids, in document order-ish
+  stackPath: [],        // ids from a top-level ancestor down through the deepest visited card
+  cursor: 0,            // index into stackPath of the card currently in view
+  seq: 1,
+};
+let claudeSample = null;   // set if sampling available
+let claudeArtifact = null; // set if persistence available
+
+const $ = s => document.querySelector(s);
+const editor = $('#editor');
+
+/* ---------- selection → floating "Ask" button ---------- */
+let pendingRange = null, pendingContext = null;
+
+function onSelectionChange() {
+  const sel = window.getSelection();
+  const asker = $('#asker');
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) { asker.style.display = 'none'; return; }
+  const range = sel.getRangeAt(0);
+  // must be inside editor or inside a card body
+  const inEditor = editor.contains(range.commonAncestorContainer);
+  const cardBody = range.commonAncestorContainer.parentElement?.closest?.('.body')
+                 || (range.commonAncestorContainer.closest?.('.body'));
+  if (!inEditor && !cardBody) { asker.style.display = 'none'; return; }
+  const text = sel.toString().trim();
+  if (text.length < 3) { asker.style.display = 'none'; return; }
+  const rect = range.getBoundingClientRect();
+  asker.style.display = 'block';
+  asker.style.left = (rect.left + rect.width/2) + 'px';
+  asker.style.top = (rect.top - 8) + 'px';
+  pendingRange = range.cloneRange();
+  pendingContext = {
+    quote: text,
+    kind: inEditor ? 'prose' : 'comment',
+    parentCardId: cardBody ? cardBody.closest('.card').dataset.commentId : null,
+    fullText: inEditor ? editor.innerText : cardBody.innerText,
+  };
+}
+document.addEventListener('selectionchange', onSelectionChange);
+window.addEventListener('scroll', () => { $('#asker').style.display='none'; }, true);
+
+/* ---------- ask for a check ---------- */
+$('#asker').addEventListener('mousedown', e => e.preventDefault());
+$('#asker').addEventListener('click', async () => {
+  if (!pendingRange || !pendingContext) return;
+  const ctx = pendingContext;
+  const id = 'c' + (state.seq++);
+  // wrap the selection in a highlight
+  const mark = document.createElement('mark');
+  mark.className = 'hl note';
+  mark.dataset.commentId = id;
+  try { pendingRange.surroundContents(mark); }
+  catch(_) { /* selection spanned block boundaries — skip wrap */ }
+  $('#asker').style.display = 'none';
+  window.getSelection().removeAllRanges();
+
+  state.comments[id] = {
+    id, quote: ctx.quote, verdict: null, body: null,
+    parentId: ctx.parentCardId ? state.comments[ctx.parentCardId].id : null,
+    targetKind: ctx.kind, pending: true,
+  };
+  if (!state.comments[id].parentId) state.order.push(id);
+  refreshCount();
+
+  // open wing to this comment
+  openComment(id);
+  await runCheck(id, ctx.quote, ctx.fullText);
+});
+
+/* ---------- the AI check ---------- */
+async function runCheck(id, quote, fullText) {
+  const card = cardEl(id);
+  if (!card) return;
+  const bodyEl = card.querySelector('.body');
+  const verdictSlot = card.querySelector('.verdict-slot');
+  bodyEl.innerHTML = `<div class="thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Reading your explanation…</div>`;
+
+  if (!claudeSample) {
+    // graceful offline demo
+    const demo = demoFeedback(quote);
+    state.comments[id].verdict = demo.verdict;
+    state.comments[id].body = demo.body;
+    state.comments[id].pending = false;
+    renderCardBody(id);
+    persist();
+    return;
+  }
+
+  const prompt =
+`You are a precise, generous tutor helping someone test their understanding through active recall. They wrote an explanation from memory. Assess ONLY the highlighted span, using the surrounding text for context.
+
+FULL TEXT:
+"""${fullText.slice(0, 4000)}"""
+
+HIGHLIGHTED SPAN to assess:
+"""${quote}"""
+
+Reply with ONLY a JSON object:
+{"verdict": one of "wrong" | "imprecise" | "missing" | "solid",
+ "note": a 1-3 sentence comment. If wrong or imprecise, say what's off and the correction. If missing, name what a complete answer would add. If solid, confirm crisply and add one enriching detail. Be specific, never generic.}`;
+
+  try {
+    const data = await claudeSample.json(prompt, { modelTier: 'default' });
+    state.comments[id].verdict = ['wrong','imprecise','missing','solid'].includes(data.verdict) ? data.verdict : 'imprecise';
+    state.comments[id].body = String(data.note || '').trim() || 'No comment returned.';
+  } catch (e) {
+    if (e.code === 'not_granted' || e.code === 'sampling_disabled') {
+      const demo = demoFeedback(quote);
+      state.comments[id].verdict = demo.verdict; state.comments[id].body = demo.body;
+    } else {
+      state.comments[id].verdict = 'imprecise';
+      state.comments[id].body = 'Could not reach the checker (' + e.code + '). Your highlight is saved — try again.';
+    }
+  }
+  state.comments[id].pending = false;
+  renderCardBody(id);
+  persist();
+}
+
+function demoFeedback(quote) {
+  // Prompt-agnostic fallback shown only when live checks are unavailable.
+  return {
+    verdict: 'imprecise',
+    body: 'Demo mode — a live check isn\'t available right now, so this is placeholder feedback rather than a real assessment of "' + trim(quote, 60) + '". Allow Claude when prompted (or reopen the artifact) to get an actual correction on this span.'
+  };
+}
+
+/* ============================================================
+   WING + CARD STACK
+   ============================================================ */
+function openComment(id) {
+  // build the path from a top-level ancestor down to id
+  const path = [];
+  let cur = id;
+  while (cur) { path.unshift(cur); cur = state.comments[cur].parentId; }
+  state.stackPath = path;
+  state.cursor = path.length - 1;   // view the requested comment
+  openWing('comments');
+  renderStack();
+}
+
+function renderStack() {
+  const stack = $('#stack');
+  const cursor = state.cursor;               // index of the card currently in view
+  stack.innerHTML = '';
+  state.stackPath.forEach((id, i) => {
+    const c = state.comments[id];
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.commentId = id;
+    card.style.transform = `translateX(${(i - cursor) * 100}%)`;
+    card.style.opacity = i === cursor ? '1' : '0';
+    card.style.pointerEvents = i === cursor ? 'auto' : 'none';
+    card.innerHTML = cardMarkup(c, i);
+    stack.appendChild(card);
+    wireCard(card, id);
+  });
+  const depth = state.stackPath.length;
+  $('#stackBack').disabled = cursor <= 0;
+  $('#stackFwd').disabled = cursor >= depth - 1;
+  $('#wingTitle').innerHTML = cursor === 0 ? 'Comment' : `Comment <span>· depth ${cursor+1}</span>`;
+  renderCrumbs();
+  litHighlight(state.stackPath[cursor]);
+  renderCardBody(state.stackPath[cursor]);
+}
+
+function renderCrumbs() {
+  const nav = $('#crumbs');
+  const path = state.stackPath;
+  if (path.length <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
+  nav.hidden = false;
+  nav.innerHTML = '';
+  path.forEach((id, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep'; sep.textContent = '›';
+      nav.appendChild(sep);
+    }
+    const c = state.comments[id];
+    const btn = document.createElement('button');
+    btn.className = 'crumb' + (i === 0 ? ' root' : '') + (i === state.cursor ? ' current' : '');
+    const label = i === 0 ? 'Your text' : trim(c.quote, 22);
+    btn.innerHTML = `<span class="vdot ${c.verdict||''}"></span><span class="txt">${escapeHtml(label)}</span>`;
+    btn.title = c.quote;
+    if (i !== state.cursor) btn.onclick = () => { state.cursor = i; renderStack(); };
+    nav.appendChild(btn);
+  });
+  // keep the current crumb in view when the trail overflows
+  const cur = nav.querySelector('.crumb.current');
+  if (cur) cur.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+}
+
+function trim(s, n){ s = (s||'').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+
+function cardMarkup(c, i) {
+  return `
+    ${i > 0 ? `<div class="depth-badge">commenting on <span class="chip">a comment</span> · depth ${i+1}</div>` : ''}
+    <div class="quoted">${escapeHtml(c.quote)}</div>
+    <div class="verdict-slot"></div>
+    <div class="body"></div>
+    <div class="card-tools" hidden>
+      <button class="btn ghost" data-act="dismiss">Dismiss</button>
+      <button class="btn" data-act="accept">Mark resolved</button>
+    </div>
+    <div class="hint">Highlight any part of this comment to question it — a new card stacks on top.</div>
+  `;
+}
+
+function renderCardBody(id) {
+  const card = cardEl(id); if (!card) return;
+  const c = state.comments[id];
+  const vslot = card.querySelector('.verdict-slot');
+  const body = card.querySelector('.body');
+  const tools = card.querySelector('.card-tools');
+  if (c.pending) return;
+  const labels = { wrong:'Incorrect', imprecise:'Imprecise', missing:'Incomplete', solid:'Solid' };
+  vslot.innerHTML = c.verdict ? `<span class="verdict ${c.verdict}">${labels[c.verdict]}</span>` : '';
+  body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/\n/g,'</p><p>')}</p>`;
+  tools.hidden = false;
+}
+
+function wireCard(card, id) {
+  card.querySelectorAll('[data-act]').forEach(btn => {
+    btn.onclick = () => {
+      if (btn.dataset.act === 'dismiss') removeComment(id);
+      if (btn.dataset.act === 'accept') { toast('Marked resolved'); markResolved(id); }
+    };
+  });
+}
+
+/* nested: selection inside a card body reuses the same asker flow (handled by selectionchange) */
+
+function litHighlight(id) {
+  document.querySelectorAll('mark.hl.lit').forEach(m => m.classList.remove('lit'));
+  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
+  if (m) { m.classList.add('lit'); }
+}
+
+/* ---------- stack navigation ---------- */
+$('#stackBack').onclick = () => {
+  if (state.cursor <= 0) return;
+  state.cursor--;
+  renderStack();
+};
+$('#stackFwd').onclick = () => {
+  if (state.cursor >= state.stackPath.length - 1) return;
+  state.cursor++;
+  renderStack();
+};
+function cardEl(id){ return document.querySelector(`.card[data-comment-id="${id}"]`); }
+
+/* clicking a highlight in the prose opens its comment */
+editor.addEventListener('click', e => {
+  const m = e.target.closest('mark.hl');
+  if (m && m.dataset.commentId) openComment(m.dataset.commentId);
+});
+
+/* ---------- wings (by role: 'comments' -> #wingLeft, 'notes' -> #wingRight) ---------- */
+function wingOf(role){ return role === 'comments' ? $('#wingLeft') : $('#wingRight'); }
+function openWing(role){
+  const w = wingOf(role);
+  w.classList.add('open'); w.setAttribute('aria-hidden','false');
+}
+function closeWing(role){
+  const w = wingOf(role);
+  w.classList.remove('open'); w.setAttribute('aria-hidden','true');
+  if (role === 'comments') document.querySelectorAll('mark.hl.lit').forEach(m=>m.classList.remove('lit'));
+}
+$('#wingClose').onclick = () => closeWing('comments');
+
+// rail handles are delegated (two of each class, one per rail)
+document.querySelectorAll('.railNotes').forEach(btn => btn.onclick = () => {
+  if (state.order.length === 0) { toast('Highlight a span in your writing to start'); return; }
+  openComment(state.order[state.order.length-1]);
+});
+document.querySelectorAll('.railRef').forEach(btn => btn.onclick = () => openWing('notes'));
+
+/* ---------- comments side (swap left/right) ---------- */
+function setCommentsSide(side){                 // 'left' | 'right'
+  const shell = $('#shell');
+  shell.setAttribute('data-comments-side', side);
+  const commentsWing = $('#wingLeft');          // panel identity, not screen side
+  const notesWing = $('#wingRight');
+  const other = side === 'left' ? 'right' : 'left';
+  // comments wing docks to `side`; notes wing to the opposite
+  commentsWing.classList.remove('left','right'); commentsWing.classList.add(side);
+  notesWing.classList.remove('left','right'); notesWing.classList.add(other);
+  // reflect in the segmented control
+  document.querySelectorAll('.seg-btn').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.side === side)));
+  try { localStorage.setItem('recall.commentsSide', side); } catch(_){}
+}
+
+$('#gear').onclick = (e) => {
+  e.stopPropagation();
+  const pop = $('#settings');
+  const show = pop.hidden;
+  pop.hidden = !show;
+  $('#gear').setAttribute('aria-expanded', String(show));
+};
+document.addEventListener('click', (e) => {
+  const pop = $('#settings');
+  if (pop.hidden) return;
+  if (e.target.closest('#settings') || e.target.closest('#gear')) return;
+  pop.hidden = true; $('#gear').setAttribute('aria-expanded','false');
+});
+document.querySelectorAll('.seg-btn').forEach(b => b.onclick = () => {
+  setCommentsSide(b.dataset.side);
+  toast('Comments moved ' + b.dataset.side);
+});
+
+/* ---------- housekeeping ---------- */
+function removeComment(id){
+  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
+  if (m) { const t = document.createTextNode(m.textContent); m.replaceWith(t); }
+  delete state.comments[id];
+  state.order = state.order.filter(x=>x!==id);
+  state.stackPath = state.stackPath.filter(x=>x!==id);
+  if (state.cursor > state.stackPath.length - 1) state.cursor = Math.max(0, state.stackPath.length - 1);
+  refreshCount();
+  if (state.stackPath.length) renderStack(); else closeWing('comments');
+  persist();
+}
+function markResolved(id){
+  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
+  if (m) m.style.opacity = '.5';
+}
+function refreshCount(){ document.querySelectorAll('.railNotes').forEach(b => b.dataset.count = String(state.order.length)); }
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
+
+/* keyboard: ← → to walk the stack when wing open */
+document.addEventListener('keydown', e => {
+  if (!$('#wingLeft').classList.contains('open')) return;
+  if (e.target === editor) return;
+  if (e.key === 'ArrowLeft' && !$('#stackBack').disabled) $('#stackBack').click();
+  if (e.key === 'ArrowRight' && !$('#stackFwd').disabled) $('#stackFwd').click();
+});
+
+/* ---------- persistence (not enabled) ---------- */
+function persist(){ /* no-op — nothing is persisted this session */ }
+
+/* ---------- boot ---------- */
+(async function boot(){
+  // restore comments side (default left)
+  let side = 'left';
+  try { const s = localStorage.getItem('recall.commentsSide'); if (s === 'left' || s === 'right') side = s; } catch(_){}
+  setCommentsSide(side);
+
+  try {
+    if (window.claude && claude.use) {
+      claudeSample = await claude.use('sample').catch(()=>null);
+      claudeArtifact = await claude.use('artifact').catch(()=>null);
+    }
+  } catch(_){}
+  if (!claudeSample) {
+    // leave a gentle note in the prompt line
+    const p = document.querySelector('.prompt-line');
+    p.insertAdjacentHTML('beforeend', ' <span style="color:var(--ink-faint)">· running in demo mode — sample checks are illustrative</span>');
+  }
+})();
+</script>
+</body>
+</html>
