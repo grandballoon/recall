@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
+    --wing-w: min(430px, 82vw);
     --paper: #f7f6f2;
     --paper-edge: #efece4;
     --ink: #21262e;
@@ -102,7 +103,12 @@
   #surface {
     flex: 1; overflow-y: auto; display: flex; justify-content: center;
     padding: 0 32px; position: relative;
+    transition: margin-left .34s cubic-bezier(.22,.61,.36,1), margin-right .34s cubic-bezier(.22,.61,.36,1);
   }
+  /* library width (236) + its margin-right (28) = 264px the wing already covers */
+  #shell[data-lib="shown"].has-open-left  #surface { margin-left: calc(var(--wing-w) - 264px); }
+  #shell[data-lib="hidden"].has-open-left #surface { margin-left: var(--wing-w); }
+  #shell.has-open-right #surface { margin-right: var(--wing-w); }
   #sheet { width: 100%; max-width: 660px; padding: 88px 0 240px; margin: 0 auto; }
 
   /* library — shelf view: a quiet left column of entries */
@@ -110,7 +116,7 @@
   .library[data-view="shelf"] {
     display: flex; flex-direction: column; width: 236px; flex: none;
     border-right: 1px solid var(--rule); padding: 84px 0 40px; margin-right: 28px;
-    position: sticky; top: 0; align-self: stretch; max-height: 100vh; overflow-y: auto;
+    overflow-y: auto;
   }
   #shell[data-lib="hidden"] .library { display: none !important; }
   .lib-head { display: flex; align-items: center; justify-content: space-between; padding: 0 18px 12px; }
@@ -247,7 +253,7 @@
 
   /* ---- wings ---- */
   .wing {
-    position: absolute; top: 0; bottom: 0; width: min(430px, 82vw);
+    position: absolute; top: 0; bottom: 0; width: var(--wing-w);
     background: var(--paper); z-index: 20; display: flex; flex-direction: column;
     transition: transform .34s cubic-bezier(.22,.61,.36,1);
   }
@@ -333,6 +339,7 @@
   .card .body { font-size: 14.5px; line-height: 1.62; color: var(--ink); }
   .card .body p { margin: 0 0 .85em; }
   .card .body mark.hl { font-family: inherit; }
+  .card .body code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em; background: var(--paper-edge); border: 1px solid var(--rule); border-radius: 4px; padding: .1em .35em; }
 
   .card-tools { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
   .btn {
@@ -410,14 +417,15 @@
     <button class="railRef" title="Files">Files</button>
   </div>
 
-  <div id="surface">
-    <div id="library" class="library" data-view="shelf">
-      <div class="lib-head">
-        <span class="lib-title">Library</span>
-        <button id="libNew" class="lib-new" title="New entry">+ New</button>
-      </div>
-      <div id="libList" class="lib-list"></div>
+  <div id="library" class="library" data-view="shelf">
+    <div class="lib-head">
+      <span class="lib-title">Library</span>
+      <button id="libNew" class="lib-new" title="New entry">+ New</button>
     </div>
+    <div id="libList" class="lib-list"></div>
+  </div>
+
+  <div id="surface">
     <div id="sheet">
       <div class="masthead">
         <h1>Recall</h1>
@@ -852,7 +860,7 @@ function renderCardBody(id) {
   if (c.pending) return;
   const labels = { wrong:'Incorrect', imprecise:'Imprecise', missing:'Incomplete', solid:'Solid' };
   vslot.innerHTML = c.verdict ? `<span class="verdict ${c.verdict}">${labels[c.verdict]}</span>` : '';
-  body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/\n/g,'</p><p>')}</p>`;
+  body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\n/g,'</p><p>')}</p>`;
   tools.hidden = false;
 }
 
@@ -894,13 +902,27 @@ editor.addEventListener('click', e => {
 
 /* ---------- wings (by role: 'comments' -> #wingLeft, 'notes' -> #wingRight) ---------- */
 function wingOf(role){ return role === 'comments' ? $('#wingLeft') : $('#wingRight'); }
+function syncWingClasses(){
+  const shell = $('#shell');
+  const wings = [$('#wingLeft'), $('#wingRight')];
+  let hasLeft = false, hasRight = false;
+  for (const w of wings) {
+    if (!w.classList.contains('open')) continue;
+    if (w.classList.contains('left')) hasLeft = true;
+    else hasRight = true;
+  }
+  shell.classList.toggle('has-open-left', hasLeft);
+  shell.classList.toggle('has-open-right', hasRight);
+}
 function openWing(role){
   const w = wingOf(role);
   w.classList.add('open'); w.setAttribute('aria-hidden','false');
+  syncWingClasses();
 }
 function closeWing(role){
   const w = wingOf(role);
   w.classList.remove('open'); w.setAttribute('aria-hidden','true');
+  syncWingClasses();
   if (role === 'comments') document.querySelectorAll('mark.hl.lit').forEach(m=>m.classList.remove('lit'));
 }
 $('#wingClose').onclick = () => closeWing('comments');
@@ -998,6 +1020,7 @@ function setCommentsSide(side){                 // 'left' | 'right'
   document.querySelectorAll('.seg-btn').forEach(b =>
     b.setAttribute('aria-pressed', String(b.dataset.side === side)));
   try { localStorage.setItem('recall.commentsSide', side); } catch(_){}
+  syncWingClasses();
 }
 
 $('#gear').onclick = (e) => {
