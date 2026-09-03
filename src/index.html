@@ -736,7 +736,7 @@ async function runCheck(id, quote, fullText) {
   } else {
     try {
       const assessment = await RecallBackend.assess(fullText, quote);
-      result = { verdict: assessment.verdict, body: assessment.note };
+      result = { verdict: assessment.verdict, body: decodeUnicode(String(assessment.note || '').trim()) || 'No comment returned.' };
     } catch (e) {
       result = checkFailure(e, quote);
     }
@@ -1071,6 +1071,7 @@ function refreshCount(){
 }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function decodeUnicode(s){ return (s||'').replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))); }
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
 
 /* keyboard: ← → to walk the stack when wing open */
