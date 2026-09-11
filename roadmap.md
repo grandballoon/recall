@@ -1,38 +1,89 @@
 # Recall — Roadmap
 
-## Now
+## Bugs
 
-- Get the new `artifact/index.html` (the live artifact's real source, pulled 2026-09-02) added to git, and the old Tauri code (`src/`, `src-tauri/`) moved out of the way. Commands are ready — see below — but need to be run in a real shell. Cowork's local sandbox (`device_bash`) is currently down with a known, unresolved bug on macOS (survives app restarts); run these yourself in Terminal for now, or wait for Anthropic to fix the sandbox.
 
-  ```
-  cd ~/Code/recall
-  git status                     # sanity-check what's already tracked before committing
-  git add spec.md roadmap.md artifact/index.html
-  git commit -m "Add live Recall artifact source; write spec and roadmap"
+## Features
 
-  # optional, once you're ready to archive the Tauri variant:
-  mkdir -p attic
-  git mv src attic/tauri-src
-  git mv src-tauri attic/tauri-app
-  git commit -m "Archive Tauri variant now that the Claude artifact is canonical"
-  ```
-
-## Next
-
-- Real persistence: some way to save and reload a session's written text + comment threads, using an artifact capability (its own small database, most likely) rather than the old filesystem-based design.
-- Decide on the standing update workflow: edit `artifact/index.html` locally → commit → have a Claude session read the live artifact, apply the same diff, and republish to the same URL.
 
 ## Later / ideas
 
-- (nothing groomed yet)
+
 
 ## Done
 
+- 2026-09-11 — Recall is a real Mac app you can keep in the Dock.
+  `scripts/install-macos.sh` builds the release bundle, installs it to
+  `/Applications/Recall.app`, re-registers it with LaunchServices, and pins it to
+  the Dock; re-running it replaces the installed copy in place, so the Dock tile
+  keeps working and just picks up the newer build.
+  The app is now signed with the Developer ID Application certificate already in
+  the keychain rather than left linker-signed, which gives it a stable identity —
+  the Keychain grants access to the stored Anthropic key by code signature, so the
+  key now survives reinstalls instead of macOS re-asking after every build.
+  The icon was rebuilt in the macOS 26 format: `src-tauri/icons/Recall.icon` is an
+  Icon Composer document (a gradient ground, a cream page, one amber-highlighted
+  span — Recall's actual gesture) that the bundler compiles with `actool` into an
+  `Assets.car`, so the app gets the real Liquid Glass treatment instead of being
+  shrunk into the grey placeholder tile Tahoe gives full-bleed legacy icons.
+  The legacy `.icns` was regenerated from the same artwork, on Apple's classic
+  824-in-1024 grid, as the pre-26 fallback.
+  Tauri CLI was updated 2.9.4 → 2.11.4, which is where `.icon` support landed; the
+  Rust dependencies were already current (tauri 2.11.5).
+  Typography is now bundled (`src/fonts/`, `src/fonts.css`, latin + latin-ext,
+  ~260KB) instead of pulled from Google Fonts at launch — offline the app would
+  otherwise fall back to system faces and the whole page would shift.
+  Also fixed the unrelated `cargo fmt` drift in `files.rs`; `cargo test` (7),
+  `cargo clippy`, and `cargo fmt --check` are all green.
+- 2026-09-02 — Individual entries can be renamed. Each Library row is now wrapped
+  in a `.lib-row`; a hover-revealed "Rename" button (or a double-click on the row)
+  swaps the title for an inline text field. Enter or blur commits `e.title` and
+  calls `persist()`; Escape discards. Rename does not bump `updatedAt`, so the
+  shelf order holds still while you work down the list. Same change in both
+  `artifact/index.html` and `src/index.html`. Verified in real Chromium — Enter /
+  blur / Escape paths, no stray inputs left behind, and `display:none` (not the
+  `hidden` attribute) on the concealed button so it actually beats
+  `.lib-item { display:flex }`.
+- 2026-09-02 — Wired the right-hand wing (was reserved) to a files folder on disk:
+  a real, user-chosen folder the app lists, imports into, opens from, and deletes
+  within. Defaults to `~/Documents/Recall`; the choice is remembered in
+  `config.json`. New `files.rs` — thin `std::fs` wrapper on one dir, file names
+  constrained to a single path component. Added `tauri-plugin-dialog` (native
+  pickers) and `tauri-plugin-opener` (hand a file/folder to the OS), both driven
+  from Rust so no `capabilities/` wiring is needed. Frontend: file list with
+  size/date, add/open/reveal/delete, empty state, disabled outside the app. It's
+  a shared shelf for now — files aren't tied to individual entries, and there's
+  no folder watcher (a re-open re-reads). `cargo test` still green.
+- 2026-09-02 — Revived the Tauri desktop app as a second surface, now serving the
+  current (artifact-derived) UI. New `src/index.html` built from
+  `artifact/index.html`: real `<html>` document, loads `claude.js`, API-key
+  connect/disconnect block folded back into the settings popup. AI checks call the
+  existing `claude_assess` command (`claude.rs` unchanged — already a current
+  Messages API integration: `claude-opus-5`, adaptive thinking, JSON-schema
+  output, server-side refusal fallback, whole-page prompt cached ahead of the
+  span). Library persistence moved from `claudeArtifact.publish` to two new Rust
+  commands, `library_load` / `library_save` (`src-tauri/src/library.rs`), which
+  write `library.json` in the app data dir atomically and treat the payload as
+  opaque bytes. `cargo test` green (7 tests). Full `cargo tauri dev` / bundle not
+  run here — the Tauri CLI isn't installed in this environment.
+- 2026-09-02 — Fixed the highlight-boundary bug (was in `## Bugs` above): typing off the end of a checked/unresolved highlight no longer gets absorbed into the `<mark>`. Chromium's contenteditable defaults to extending the trailing inline element when the caret sits right at its end, which is what caused it. Added `fixHighlightBoundary()`, wired into the `#editor` `input` listener: each mark tracks its real length in `data-len`; on an insertion, if the caret lands exactly at the mark's current end, whatever got typed there is popped back out as a plain sibling node, while an edit strictly *inside* the mark still grows or shrinks it as before. Verified against real Chromium (not just a DOM shim) with a headless Playwright script — confirmed the raw bug first (typing after a mark gets absorbed), then confirmed the fix stops it, including a shrink-then-append case. Republished to the live artifact URL; `artifact/index.html` here matches what's live.
 - 2026-09-02 — Initial Recall artifact published ("Recall — a desk for testing what you know"), using `window.claude`'s `sample` capability for AI checking on the normal subscription.
 - 2026-09-02 — Decided: artifact is canonical going forward; Tauri app retired.
+  _(Partly reversed later that day — the Tauri app is back as a second surface, not
+  a replacement. The artifact stays canonical.)_
 - 2026-09-02 — Network egress enabled (scoped to the artifact's specific domain) so Claude sessions can read the live artifact's source directly.
-- 2026-09-02 — Pulled the live artifact's actual source and saved it to `artifact/index.html`.
+- 2026-09-02 — Pulled the live artifact's actual source and saved it to `artifact/index.html`; corrected `spec.md`'s persistence section after reading the full source (persistence is already implemented, via the artifact's own save-a-version capability — not missing, as first assumed).
+- 2026-09-02 — Proved out the edit → republish loop: added a small blue dot to the live UI as a test, republished to the same artifact URL, confirmed it doesn't need `device_bash` or the local git repo to work.
+- ~~Archive `src/` and `src-tauri/` into `attic/`.~~ Cancelled — the desktop app
+  is live again, so both directories stay in place. `attic/` is currently empty.
+- The test blue dot (`.test-dot`, bottom-right) was dropped from `src/index.html`
+  during the port. `artifact/index.html` still carries it, matching what's live —
+  removing it there is a separate republish.
+- Sync `artifact/index.html` on disk with what's actually live — the matching file was written to `~/Code/recall/artifact/index.html`. Worth a `git add -A && git commit` once you've looked it over.
+- There's an existing `recall.html` (deleted, uncommitted) and a modified, uncommitted `.gitignore` left over from before this repo's cleanup started — still unresolved. Worth sorting out what `recall.html` was and whether `artifact/index.html` is the right path going forward, or whether it should live at `recall.html` instead.
+- `device_bash` (Cowork's local sandbox) is still down — known bug, survives app restarts. Git operations that need it can be run in your own Terminal instead in the meantime.
 
 ## Superseded (from the old Tauri-era roadmap)
 
-- ~~Add a way to connect Claude~~ — moot; the artifact already has Claude access built in via `window.claude`.
+- ~~Add a way to connect Claude~~ — done on both surfaces: the artifact via
+  `window.claude`, the desktop app via the API-key settings block + `claude_assess`.
