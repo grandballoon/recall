@@ -5,6 +5,12 @@
 
 ## Features
 
+- The two surfaces have drifted, and the canonical one is the one that's behind.
+  `src/index.html` carries four changes the live artifact doesn't: backtick code
+  spans in response bodies, the literal-unicode-escape fix, the sidebar no longer
+  re-sorting on entry click, and the quoted span dropped from comment cards.
+  The artifact also still shows the leftover test blue dot.
+  Porting those back is a republish to the same artifact URL.
 
 ## Later / ideas
 
@@ -79,8 +85,11 @@
 - The test blue dot (`.test-dot`, bottom-right) was dropped from `src/index.html`
   during the port. `artifact/index.html` still carries it, matching what's live —
   removing it there is a separate republish.
-- Sync `artifact/index.html` on disk with what's actually live — the matching file was written to `~/Code/recall/artifact/index.html`. Worth a `git add -A && git commit` once you've looked it over.
-- There's an existing `recall.html` (deleted, uncommitted) and a modified, uncommitted `.gitignore` left over from before this repo's cleanup started — still unresolved. Worth sorting out what `recall.html` was and whether `artifact/index.html` is the right path going forward, or whether it should live at `recall.html` instead.
+- Sync `artifact/index.html` on disk with what's actually live — the matching file was written to `~/Code/recall/artifact/index.html`. Committed 2026-09-11.
+- ~~Sort out the leftover uncommitted `recall.html` and `.gitignore`.~~ Resolved
+  2026-09-11: `recall.html` was the original single-file prototype from the first
+  commit and is gone; `artifact/index.html` is the right path for the live
+  artifact's source, and the whole working tree is committed.
 - `device_bash` (Cowork's local sandbox) is still down — known bug, survives app restarts. Git operations that need it can be run in your own Terminal instead in the meantime.
 
 ## Superseded (from the old Tauri-era roadmap)
