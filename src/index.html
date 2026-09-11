@@ -4,9 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Recall — a desk for testing what you know</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts.css">
 <style>
   :root {
     --wing-w: min(430px, 82vw);
@@ -318,12 +316,7 @@
     background: var(--paper-edge); border: 1px solid var(--rule); border-radius: 5px;
     padding: 2px 7px; font-weight: 500; color: var(--ink-soft);
   }
-  .quoted {
-    border-left: 3px solid var(--note-line); background: var(--note-wash);
-    padding: 9px 13px; border-radius: 0 8px 8px 0; margin-bottom: 16px;
-    font-family: "Spectral", serif; font-size: 15px; line-height: 1.5; color: var(--ink-soft);
-  }
-  .verdict {
+.verdict {
     display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em;
     padding: 3px 9px; border-radius: 20px; margin-bottom: 12px;
   }
@@ -840,7 +833,6 @@ function trim(s, n){ s = (s||'').trim(); return s.length > n ? s.slice(0, n-1) +
 function cardMarkup(c, i) {
   return `
     ${i > 0 ? `<div class="depth-badge">commenting on <span class="chip">a comment</span> · depth ${i+1}</div>` : ''}
-    <div class="quoted">${escapeHtml(c.quote)}</div>
     <div class="verdict-slot"></div>
     <div class="body"></div>
     <div class="card-tools" hidden>
@@ -860,7 +852,7 @@ function renderCardBody(id) {
   if (c.pending) return;
   const labels = { wrong:'Incorrect', imprecise:'Imprecise', missing:'Incomplete', solid:'Solid' };
   vslot.innerHTML = c.verdict ? `<span class="verdict ${c.verdict}">${labels[c.verdict]}</span>` : '';
-  body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\n/g,'</p><p>')}</p>`;
+  body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/\s?\\([^\w\s])/g,'$1').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\n/g,'</p><p>')}</p>`;
   tools.hidden = false;
 }
 
