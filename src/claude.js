@@ -41,6 +41,9 @@
     /* Persists the whole library as one JSON string. -> null */
     librarySave: (data) => call('library_save', { data }),
 
+    /* Shows library.json (and its .bak) in the file browser. -> null */
+    libraryReveal: () => call('library_reveal'),
+
     /* ---- files folder: source material Recall reads from and writes to ---- */
 
     /* Absolute path of the current files folder. -> string */

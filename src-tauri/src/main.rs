@@ -18,6 +18,7 @@ fn main() {
             commands::claude_assess,
             library::library_load,
             library::library_save,
+            library::library_reveal,
             files::files_folder,
             files::files_folder_pick,
             files::files_list,

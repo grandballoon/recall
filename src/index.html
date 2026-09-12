@@ -395,6 +395,28 @@
   .files-empty { padding: 34px 22px; color: var(--ink-faint); font-size: 12.5px; line-height: 1.6; }
   .files-empty b { color: var(--ink-soft); font-weight: 600; }
 
+  /* ---- safe mode ----
+     Shown when the library on disk could not be read. It has to be impossible
+     to miss and impossible to dismiss: the alternative to noticing it is
+     typing a whole session into a page that is deliberately not saving. */
+  .safe-banner {
+    flex: none; display: flex; align-items: flex-start; gap: 14px;
+    padding: 13px 20px; background: var(--note-wash);
+    border-bottom: 1px solid var(--note-line);
+    font-family: "Inter", sans-serif; font-size: 12.5px; line-height: 1.5; color: var(--ink);
+  }
+  .safe-banner .sb-mark { flex: none; font-size: 14px; line-height: 1.35; }
+  .safe-banner .sb-text { flex: 1; min-width: 0; }
+  .safe-banner b { font-weight: 600; }
+  .safe-banner .sb-detail { color: var(--ink-soft); margin-top: 3px; }
+  .safe-banner .sb-show {
+    flex: none; background: var(--paper); border: 1px solid var(--rule-strong);
+    border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--ink);
+  }
+  .safe-banner .sb-show:hover { border-color: var(--note-line); }
+  body.safe-mode { display: flex; flex-direction: column; }
+  body.safe-mode #shell { flex: 1; min-height: 0; height: auto; }
+
   .toast {
     position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px);
     background: var(--ink); color: var(--paper); font-family:"Inter",sans-serif; font-size: 12.5px;
@@ -404,6 +426,14 @@
 </style>
 </head>
 <body>
+<div class="safe-banner" id="safeBanner" role="alert" hidden>
+  <span class="sb-mark" aria-hidden="true">⚠</span>
+  <span class="sb-text">
+    <b id="safeTitle"></b>
+    <div class="sb-detail" id="safeDetail"></div>
+  </span>
+  <button class="sb-show" id="safeShow">Show the file</button>
+</div>
 <div id="shell">
   <div class="rail left" id="railLeft">
     <button class="railNotes count" data-count="0" title="Comments">Comments</button>
@@ -1128,18 +1158,59 @@ function flashSave(text){
   if (text === 'Saved' || text === '•') saveFlashTimer = setTimeout(()=>el.classList.remove('show'), 1200);
 }
 
+/* Why a hydrate failed decides what happens next, so it is reported rather
+   than collapsed into a bare false. 'empty' means there is simply nothing
+   saved yet and seeding a first entry is right; every other reason means
+   there IS a library on disk that we could not use, and writing over it
+   would destroy it. */
+const HYDRATE_EMPTY = 'empty';            // nothing saved yet — a fresh start is correct
+const HYDRATE_UNREADABLE = 'unreadable';  // a file exists but is not valid library JSON
+const HYDRATE_VERSION = 'version';        // written by a version of Recall this one doesn't know
+
 function hydrateFromRaw(raw){
-  if (!raw) return false;
-  try {
-    const d = JSON.parse(raw);
-    if (!d || d.v !== 1 || !Array.isArray(d.library) || d.library.length === 0) return false;
-    state.library = d.library;
-    state.libView = d.libView || 'shelf';
-    state.libVisible = d.libVisible !== false;
-    loadEntry(d.activeId && d.library.some(e=>e.id===d.activeId) ? d.activeId : d.library[0].id);
-    return true;
-  } catch(_){ return false; }
+  if (!raw) return { ok: false, reason: HYDRATE_EMPTY };
+
+  let d;
+  try { d = JSON.parse(raw); }
+  catch (e) { return { ok: false, reason: HYDRATE_UNREADABLE, detail: e.message }; }
+
+  if (!d || typeof d !== 'object' || !Array.isArray(d.library)) {
+    return { ok: false, reason: HYDRATE_UNREADABLE, detail: 'The file is not shaped like a Recall library.' };
+  }
+  if (d.v !== 1) return { ok: false, reason: HYDRATE_VERSION, detail: 'Found format v' + d.v + '; this version reads v1.' };
+  if (d.library.length === 0) return { ok: false, reason: HYDRATE_EMPTY };
+
+  state.library = d.library;
+  state.libView = d.libView || 'shelf';
+  state.libVisible = d.libVisible !== false;
+  loadEntry(d.activeId && d.library.some(e=>e.id===d.activeId) ? d.activeId : d.library[0].id);
+  return { ok: true };
 }
+
+/* The library on disk could not be read. Stop writing — permanently, for this
+   session — so the unreadable file is preserved for recovery instead of being
+   replaced by whatever gets typed next, and say so in a way that cannot be
+   missed or dismissed. */
+function enterSafeMode(reason, detail){
+  backendPersist = false;
+
+  const titles = {
+    [HYDRATE_UNREADABLE]: 'Your library could not be read, so nothing will be saved.',
+    [HYDRATE_VERSION]: 'Your library was written by a different version of Recall, so nothing will be saved.',
+  };
+  $('#safeTitle').textContent = titles[reason] || titles[HYDRATE_UNREADABLE];
+  $('#safeDetail').textContent =
+    (detail ? detail + ' ' : '') +
+    'The file has been left untouched, along with the backup from the save before it. '
+    + 'Anything you write in this session is in memory only.';
+
+  $('#safeBanner').hidden = false;
+  document.body.classList.add('safe-mode');
+  flashSave('Not saved');
+}
+$('#safeShow').onclick = () => {
+  RecallBackend.libraryReveal().catch(e => toast(e.message || 'Could not show the file'));
+};
 
 /* highlights should never grow by text typed off their end — only by
    edits made within the span. Detect an insertion whose caret lands
@@ -1306,16 +1377,25 @@ $('#claudeKey').addEventListener('keydown', e => {
 
   await refreshConnection();
 
-  // hydrate the library from the desktop backend, or seed a first entry
+  // Hydrate the library from the desktop backend, or seed a first entry.
+  // A failure to read an existing library is never a reason to start fresh:
+  // seeding while persistence stayed on would save the seed over the library
+  // it failed to read. Anything other than "nothing saved yet" drops into
+  // safe mode, which keeps the file intact.
   backendPersist = RecallBackend.available;
   let hydrated = false;
   if (backendPersist) {
+    let result;
     try {
-      hydrated = hydrateFromRaw(await RecallBackend.libraryLoad());
+      result = hydrateFromRaw(await RecallBackend.libraryLoad());
     } catch (e) {
+      result = e.code === 'unavailable'
+        ? { ok: false, reason: HYDRATE_EMPTY }   // outside the app: in-memory session
+        : { ok: false, reason: HYDRATE_UNREADABLE, detail: e.message };
       if (e.code === 'unavailable') backendPersist = false;
-      else toast('Could not load your library — ' + (e.message || 'starting fresh'));
     }
+    hydrated = result.ok;
+    if (!result.ok && result.reason !== HYDRATE_EMPTY) enterSafeMode(result.reason, result.detail);
   }
   if (!hydrated) {
     state.library = [];
