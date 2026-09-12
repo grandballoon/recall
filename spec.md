@@ -66,6 +66,23 @@ comment panel opens from) — not document content.
   bytes — the library's shape lives entirely in the webview, so the store never
   changes when the document model does.
 
+### Not losing the library (desktop)
+
+Every save rewrites the whole library, so the newest write would otherwise be the only copy in existence.
+Two things guard against that.
+
+First, each save rotates the copy it replaces to `library.json.bak` before the new bytes land.
+The rotation is a rename rather than a copy, so it costs nothing at any library size and cannot fail halfway.
+
+Second, a library that cannot be read is never written over.
+`hydrateFromRaw` reports *why* it failed rather than returning a bare false, and only "nothing saved yet" leads to seeding a first entry.
+Unparseable content, content that isn't shaped like a library, and an unrecognised format version all put the app into **safe mode**: persistence is switched off for the session, a banner that cannot be dismissed says so, and a button reveals the file and its backup in Finder.
+The session still works — you can write in it — but only in memory.
+
+This matters because the failure it prevents is silent and total.
+Seeding a fresh library while persistence stayed on would save the seed over the library it had just failed to read, roughly a second later.
+The same applied to a bumped format version, which would have wiped every existing library on first launch of the new version.
+
 ## Files folder (desktop only)
 
 The right-hand wing is a view onto a real folder on disk — source material to

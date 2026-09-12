@@ -18,6 +18,24 @@
 
 ## Done
 
+- 2026-09-11 — An unreadable `library.json` no longer destroys the library.
+  The old boot path swallowed every hydrate failure into a bare `false`, seeded a
+  fresh entry, and left persistence switched on — so roughly a second later the
+  seed was saved over the library it had just failed to read.
+  A truncated file, a stray byte, or a future `v: 2` schema bump would all have
+  taken the whole library with them, silently and with no backup.
+  Now `hydrateFromRaw` reports why it failed; only "nothing saved yet" seeds.
+  Anything else enters safe mode: persistence off for the session, an
+  undismissable banner, and a button that reveals the file and its backup in
+  Finder via the new `library_reveal` command.
+  `library_save` also rotates the copy it replaces to `library.json.bak` first,
+  by rename rather than copy, so it costs nothing at any size.
+  Verified the ten hydrate branches in JavaScriptCore — the engine the webview
+  actually runs — and the store's rotation in five new Rust tests (12 total).
+  Measured while I was in there: at 2000 worked entries (25MB) a save costs about
+  140ms end to end, and the disk write dominates, so size is not the constraint —
+  the sidebar's full DOM rebuild on every entry switch is what degrades first,
+  somewhere in the high hundreds of entries.
 - 2026-09-11 — Recall is a real Mac app you can keep in the Dock.
   `scripts/install-macos.sh` builds the release bundle, installs it to
   `/Applications/Recall.app`, re-registers it with LaunchServices, and pins it to
