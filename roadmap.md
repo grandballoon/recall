@@ -18,6 +18,50 @@
 
 ## Done
 
+- 2026-09-13 — Checks stopped disappearing. AI responses kept arriving but left no
+  highlight in the prose, and after a reload the check was gone; the real library
+  on disk had 11 such orphans, 4 of them in the entry open at the time.
+  Three defects, each silent, and they compounded.
+  `Range.surroundContents()` throws `InvalidStateError` on a range that *partially*
+  selects a non-Text node — a paragraph boundary, or a `<mark>` — and the throw was
+  swallowed by a bare `catch(_)`, so the comment was created and saved with nothing
+  in `editorHTML` pointing at it.
+  Pressing Enter at the end of a highlight made Blink split the `<mark>` and wrap
+  the new blank line in the empty half; those accumulated, and each one broke every
+  later selection that crossed it, which is why the bug looked like it depended on
+  how much had been written.
+  And pasting an answer card back into the prose put a `.body` element in the
+  editor, so `cardBody.closest('.card')` returned null and reading `.dataset` off it
+  threw mid-object-literal — leaving `pendingRange` updated and `pendingContext`
+  stale, which filed the next check under the previous quote. That signature is in
+  the library: `c8`/`c9`/`c10` in `First Lua entry` share one quote, as do
+  `c2`/`c3`/`c4` in `Python - Even More Modules`.
+  Now a highlight is a set of marks built one text node at a time, anchoring
+  happens before the check is recorded and refuses out loud if it cannot, empty
+  marks are unwrapped on sight and on load, paste and drop insert plain text, a
+  selection in the editor is prose whatever markup it sits in, and card lookups are
+  scoped to `#stack`. Highlights asked about a comment card are stored as offsets
+  and re-wrapped when the card redraws, which they never survived before.
+  Added `tests/` — a headless-Chrome harness with no toolchain to install, since the
+  Playwright script used for the 2026-09-02 boundary fix was never committed.
+  22 assertions, all of which failed or would have beforehand; also replayed
+  against five real entries from the library on disk, 70 assertions green.
+  Both surfaces patched identically; `cargo check` clean, Rust untouched.
+- 2026-09-13 — Checks that had already lost their highlight can be put back.
+  A notice in the document offers it; nothing moves until asked.
+  The quote is a sound target because the note was written about the quote the
+  check recorded — even the ones filed under the wrong quote agree with the text
+  they name — but only where it appears exactly once, normalising whitespace on
+  both sides. Ambiguous and absent quotes are left alone and reported.
+  Against the real library: 9 of 10 restored, the tenth genuinely gone from the
+  page it belonged to. Questions asked about a comment card are found by quote in
+  the rebuilt card text, so they need no repair action.
+  Known consequence: 4 of the 9 restored are nested under another check quoting
+  the identical span (the stale-context defect filed three at a time), so a click
+  reaches only the innermost. Dropping the later ones was the alternative.
+  Making co-located checks individually reachable needs the comment wing to
+  distinguish a parent chain from a set sharing one span — not attempted here.
+
 - 2026-09-11 — An unreadable `library.json` no longer destroys the library.
   The old boot path swallowed every hydrate failure into a bare `false`, seeded a
   fresh entry, and left persistence switched on — so roughly a second later the

@@ -181,6 +181,26 @@
   }
   .prompt-line b { color: var(--ink); font-weight: 600; }
 
+  /* ---- lost-highlight repair ----
+     A check with no highlight left in the page cannot be opened at all, so the
+     offer to put it back has to appear in the document it belongs to. Pulled up
+     under the prompt line, which carries the 30px gap down to the editor. */
+  .repair {
+    display: flex; align-items: center; gap: 12px;
+    margin: -14px 0 30px; padding: 9px 9px 9px 13px;
+    background: var(--note-wash); border: 1px solid var(--note-line); border-radius: 9px;
+    font-family: "Inter", sans-serif; font-size: 12px; line-height: 1.45; color: var(--ink-soft);
+  }
+  .repair .rp-text { flex: 1; min-width: 0; }
+  .repair .rp-acts { flex: none; display: flex; gap: 6px; }
+  .repair button {
+    background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 7px;
+    padding: 5px 11px; font-family: inherit; font-size: 11.5px; font-weight: 600;
+    color: var(--ink); cursor: pointer;
+  }
+  .repair button:hover { border-color: var(--note-line); }
+  .repair .rp-skip { color: var(--ink-faint); font-weight: 500; }
+
   #editor {
     font-size: 1.12rem; line-height: 1.72; outline: none; color: var(--ink);
     caret-color: var(--accent); min-height: 300px;
@@ -383,6 +403,13 @@
         </div>
       </div>
       <div class="prompt-line">Today's prompt · <b id="promptText">Explain the concept in object-oriented programming of "encapsulation over inheritance."</b></div>
+      <div class="repair" id="repair" hidden>
+        <span class="rp-text" id="repairText"></span>
+        <span class="rp-acts">
+          <button class="rp-do" id="repairDo" type="button">Restore</button>
+          <button class="rp-skip" id="repairSkip" type="button">Dismiss</button>
+        </span>
+      </div>
       <div id="editor" contenteditable="true" spellcheck="true"></div>
     </div>
   </div>
@@ -465,8 +492,20 @@ function loadEntry(id){
   state.order = e.order || [];
   state.seq = e.seq || 1;
   state.stackPath = []; state.cursor = 0;
+  clearPending();
   editor.innerHTML = e.editorHTML || '';
-  editor.querySelectorAll('mark.hl').forEach(m => { if (!m.dataset.len) m.dataset.len = String(m.textContent.length); });
+  // Documents written by earlier builds can carry empty marks left behind when
+  // Enter split a highlight. Clear them out on the way in, so a document that
+  // already has them stops breaking the next highlight made in it.
+  editor.querySelectorAll('mark.hl').forEach(m => {
+    if (!m.textContent.length) {
+      const p = m.parentNode; if (!p) return;
+      while (m.firstChild) p.insertBefore(m.firstChild, m);
+      p.removeChild(m);
+      return;
+    }
+    if (!m.dataset.len) m.dataset.len = String(m.textContent.length);
+  });
   const pt = $('#promptText'); if (pt) pt.textContent = e.prompt || 'Untitled';
   closeWing('comments');
   refreshCount();
@@ -570,29 +609,163 @@ document.addEventListener('click', (ev) => {
 
 
 
+/* ---------- anchoring a check to the text it is about ----------
+   A highlight is a set of <mark> elements sharing one comment id, not a single
+   element. Range.surroundContents() cannot express a span that crosses a
+   paragraph boundary — it throws InvalidStateError rather than wrapping — so
+   the span is wrapped one text node at a time instead. Everything that acts on
+   a highlight therefore acts on all of its marks. */
+function marksFor(id){ return document.querySelectorAll(`mark.hl[data-comment-id="${id}"]`); }
+
+function markRange(range, id){
+  const root = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentNode;
+  if (!root) return [];
+
+  // Split the part-covered ends, so every text node is wholly in or wholly out.
+  // The end goes first: splitting the start would shift the end's offset when
+  // both boundaries sit in the same node.
+  const end = range.endContainer;
+  if (end.nodeType === Node.TEXT_NODE && range.endOffset > 0 && range.endOffset < end.data.length) {
+    end.splitText(range.endOffset);
+  }
+  const start = range.startContainer;
+  if (start.nodeType === Node.TEXT_NODE && range.startOffset > 0 && range.startOffset < start.data.length) {
+    range.setStart(start.splitText(range.startOffset), 0);
+  }
+
+  const held = [];
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walk.nextNode())) {
+    if (!node.data.length) continue;
+    try {
+      if (range.comparePoint(node, 0) === 0 && range.comparePoint(node, node.data.length) === 0) held.push(node);
+    } catch (_) { /* outside the range's root — not ours to wrap */ }
+  }
+
+  return held.map(text => {
+    const mark = document.createElement('mark');
+    mark.className = 'hl note';
+    mark.dataset.commentId = id;
+    text.parentNode.insertBefore(mark, text);
+    mark.appendChild(text);
+    mark.dataset.len = String(mark.textContent.length);
+    return mark;
+  });
+}
+
+/* Unwrap every mark of a highlight, keeping what was inside it. */
+function unwrapMarks(id){
+  marksFor(id).forEach(mark => {
+    const parent = mark.parentNode; if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize();
+  });
+}
+
+/* A highlight inside a comment card sits in markup renderCardBody rebuilds from
+   scratch, so it cannot survive as an element. It is stored as offsets into the
+   parent card's text and re-wrapped each time that card is drawn. */
+function offsetsWithin(root, range){
+  const pre = document.createRange();
+  pre.selectNodeContents(root);
+  pre.setEnd(range.startContainer, range.startOffset);
+  const start = pre.toString().length;
+  return { start, end: start + range.toString().length };
+}
+function rangeFromOffsets(root, start, end){
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let seen = 0, opened = false, node;
+  while ((node = walk.nextNode())) {
+    const next = seen + node.data.length;
+    if (!opened && start <= next) { range.setStart(node, start - seen); opened = true; }
+    if (opened && end <= next) { range.setEnd(node, end - seen); return range; }
+    seen = next;
+  }
+  return null;
+}
+
+/* Finding a span of text again when the marks that held it are gone.
+   Whitespace is normalised on both sides: a quote was recorded from a
+   selection, which renders a block boundary as a newline the prose itself does
+   not carry, and older prose can hold non-breaking spaces from a paste.
+   The match must be unique — placing a check against the wrong sentence is
+   worse than leaving it unplaced. */
+function textIndex(root){
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const points = [];            // where each kept character sits in the DOM
+  let norm = '', gap = false, node;
+  while ((node = walk.nextNode())) {
+    for (let i = 0; i < node.data.length; i++) {
+      const ch = node.data[i];
+      if (/\s/.test(ch)) { gap = norm.length > 0; continue; }
+      if (gap) { norm += ' '; points.push({ node, offset: i }); gap = false; }
+      norm += ch; points.push({ node, offset: i });
+    }
+  }
+  return { norm, points };
+}
+function findQuote(root, quote){
+  const needle = String(quote || '').replace(/\s+/g, ' ').trim();
+  if (needle.length < 3) return { count: 0, range: null };
+  const { norm, points } = textIndex(root);
+  let count = 0, at = -1, from = 0, i;
+  while ((i = norm.indexOf(needle, from)) !== -1) { count++; if (count === 1) at = i; from = i + 1; }
+  if (count !== 1) return { count, range: null };
+  const first = points[at], last = points[at + needle.length - 1];
+  if (!first || !last) return { count: 0, range: null };
+  const range = document.createRange();
+  range.setStart(first.node, first.offset);
+  range.setEnd(last.node, last.offset + 1);
+  return { count: 1, range };
+}
+
+/* The selection the Ask button will act on. Cleared whenever the offer is
+   withdrawn, so a stale pair can never be paired with a fresh click. */
+function clearPending(){ pendingRange = null; pendingContext = null; }
+
 function onSelectionChange() {
-  const sel = window.getSelection();
   const asker = $('#asker');
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) { asker.style.display = 'none'; return; }
+  const withdraw = () => { asker.style.display = 'none'; clearPending(); };
+
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return withdraw();
   const range = sel.getRangeAt(0);
-  // must be inside editor or inside a card body
+
+  // A selection in the prose is prose, whatever markup it happens to sit in,
+  // and a card body counts only when it is a real card in the stack. Text
+  // pasted into the editor can otherwise impersonate the app's own structure.
   const inEditor = editor.contains(range.commonAncestorContainer);
-  const cardBody = range.commonAncestorContainer.parentElement?.closest?.('.body')
-                 || (range.commonAncestorContainer.closest?.('.body'));
-  if (!inEditor && !cardBody) { asker.style.display = 'none'; return; }
+  const host = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentElement;
+  const cardBody = (inEditor || !host) ? null : host.closest('#stack .card .body');
+  if (!inEditor && !cardBody) return withdraw();
+
   const text = sel.toString().trim();
-  if (text.length < 3) { asker.style.display = 'none'; return; }
+  if (text.length < 3) return withdraw();
+
   const rect = range.getBoundingClientRect();
   asker.style.display = 'block';
   asker.style.left = (rect.left + rect.width/2) + 'px';
   asker.style.top = (rect.top - 8) + 'px';
-  pendingRange = range.cloneRange();
-  pendingContext = {
+
+  // Built whole, then published in one step. Assigning the range first and
+  // filling the context afterwards means a throw part-way through pairs the
+  // new range with the previous quote — and files the check against it.
+  const ctx = {
     quote: text,
-    kind: inEditor ? 'prose' : 'comment',
-    parentCardId: cardBody ? cardBody.closest('.card').dataset.commentId : null,
-    fullText: inEditor ? editor.innerText : cardBody.innerText,
+    kind: cardBody ? 'comment' : 'prose',
+    parentCardId: cardBody ? (cardBody.closest('.card')?.dataset.commentId || null) : null,
+    fullText: cardBody ? cardBody.innerText : editor.innerText,
+    anchor: cardBody ? offsetsWithin(cardBody, range) : null,
   };
+  pendingRange = range.cloneRange();
+  pendingContext = ctx;
 }
 document.addEventListener('selectionchange', onSelectionChange);
 window.addEventListener('scroll', () => { $('#asker').style.display='none'; }, true);
@@ -601,21 +774,24 @@ window.addEventListener('scroll', () => { $('#asker').style.display='none'; }, t
 $('#asker').addEventListener('mousedown', e => e.preventDefault());
 $('#asker').addEventListener('click', async () => {
   if (!pendingRange || !pendingContext) return;
-  const ctx = pendingContext;
-  const id = 'c' + (state.seq++);
-  // wrap the selection in a highlight
-  const mark = document.createElement('mark');
-  mark.className = 'hl note';
-  mark.dataset.commentId = id;
-  try { pendingRange.surroundContents(mark); mark.dataset.len = String(mark.textContent.length); }
-  catch(_) { /* selection spanned block boundaries — skip wrap */ }
+  const ctx = pendingContext, range = pendingRange;
+  clearPending();
   $('#asker').style.display = 'none';
-  window.getSelection().removeAllRanges();
 
+  // Anchor before recording anything. A check whose span could not be marked
+  // would be saved with nothing in the text pointing at it, which to the reader
+  // is indistinguishable from the answer never having arrived.
+  const id = 'c' + state.seq;
+  const marks = markRange(range, id);
+  window.getSelection().removeAllRanges();
+  if (!marks.length) { toast('That span could not be highlighted — select it again'); return; }
+  state.seq++;
+
+  const parentId = ctx.parentCardId && state.comments[ctx.parentCardId] ? ctx.parentCardId : null;
   state.comments[id] = {
     id, quote: ctx.quote, verdict: null, body: null,
-    parentId: ctx.parentCardId ? state.comments[ctx.parentCardId].id : null,
-    targetKind: ctx.kind, pending: true,
+    parentId,
+    targetKind: ctx.kind, anchor: ctx.anchor || null, pending: true,
   };
   if (!state.comments[id].parentId) state.order.push(id);
   refreshCount();
@@ -690,7 +866,10 @@ function openComment(id) {
   // build the path from a top-level ancestor down to id
   const path = [];
   let cur = id;
-  while (cur) { path.unshift(cur); cur = state.comments[cur].parentId; }
+  while (cur) {
+    const c = state.comments[cur]; if (!c) break;
+    path.unshift(cur); cur = c.parentId;
+  }
   state.stackPath = path;
   state.cursor = path.length - 1;   // view the requested comment
   openWing('comments');
@@ -774,7 +953,22 @@ function renderCardBody(id) {
   const labels = { wrong:'Incorrect', imprecise:'Imprecise', missing:'Incomplete', solid:'Solid' };
   vslot.innerHTML = c.verdict ? `<span class="verdict ${c.verdict}">${labels[c.verdict]}</span>` : '';
   body.innerHTML = `<p>${escapeHtml(c.body || '').replace(/\n/g,'</p><p>')}</p>`;
+  reanchorChildren(id, body);
   tools.hidden = false;
+}
+
+/* Re-wrap the highlights belonging to questions asked about this card. The
+   markup they sat in was just replaced, so they are rebuilt from the offsets
+   stored on each child comment. */
+function reanchorChildren(parentId, body){
+  Object.keys(state.comments).forEach(cid => {
+    const c = state.comments[cid];
+    if (!c || c.parentId !== parentId || c.resolved) return;
+    let r = c.anchor ? rangeFromOffsets(body, c.anchor.start, c.anchor.end) : null;
+    // Questions asked before anchors were recorded have only their quote to go on.
+    if (!r) { const found = findQuote(body, c.quote); r = found.count === 1 ? found.range : null; }
+    if (r) markRange(r, cid);
+  });
 }
 
 function wireCard(card, id) {
@@ -790,8 +984,7 @@ function wireCard(card, id) {
 
 function litHighlight(id) {
   document.querySelectorAll('mark.hl.lit').forEach(m => m.classList.remove('lit'));
-  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
-  if (m) { m.classList.add('lit'); }
+  marksFor(id).forEach(m => m.classList.add('lit'));
 }
 
 /* ---------- stack navigation ---------- */
@@ -805,7 +998,7 @@ $('#stackFwd').onclick = () => {
   state.cursor++;
   renderStack();
 };
-function cardEl(id){ return document.querySelector(`.card[data-comment-id="${id}"]`); }
+function cardEl(id){ return $('#stack').querySelector(`.card[data-comment-id="${id}"]`); }
 
 /* clicking a highlight in the prose opens its comment */
 editor.addEventListener('click', e => {
@@ -870,8 +1063,7 @@ document.querySelectorAll('.seg-btn').forEach(b => b.onclick = () => {
 
 /* ---------- housekeeping ---------- */
 function removeComment(id){
-  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
-  if (m) { const t = document.createTextNode(m.textContent); m.replaceWith(t); }
+  unwrapMarks(id);
   delete state.comments[id];
   state.order = state.order.filter(x=>x!==id);
   state.stackPath = state.stackPath.filter(x=>x!==id);
@@ -882,8 +1074,7 @@ function removeComment(id){
 }
 function markResolved(id){
   // remove the highlight from the prose, but keep the comment on record as resolved
-  const m = document.querySelector(`mark.hl[data-comment-id="${id}"]`);
-  if (m) { const t = document.createTextNode(m.textContent); m.replaceWith(t); }
+  unwrapMarks(id);
   if (state.comments[id]) state.comments[id].resolved = true;
   refreshCount();
   // drop it from the active card path so the wing doesn't show a dangling card
@@ -895,7 +1086,57 @@ function markResolved(id){
 function refreshCount(){
   const active = state.order.filter(id => state.comments[id] && !state.comments[id].resolved).length;
   document.querySelectorAll('.railNotes').forEach(b => b.dataset.count = String(active));
+  renderRepair();
 }
+
+/* ---------- putting a lost highlight back ----------
+   Older builds could save a check whose span never got marked, leaving an
+   answer on record with nothing in the page pointing at it. The note was
+   written about the quote the check recorded, so the quote is a sound place to
+   put it back — but only where that text appears exactly once, and only when
+   asked for. Guessing silently would move a check onto a sentence it was never
+   about. */
+const repairDismissed = new Set();
+const repairTried = new Set();
+
+function orphanedChecks(){
+  if (!state.activeId) return [];
+  return state.order.filter(id => {
+    const c = state.comments[id];
+    return c && !c.resolved && !c.pending && !editor.querySelector(`mark.hl[data-comment-id="${id}"]`);
+  });
+}
+
+function renderRepair(){
+  const bar = $('#repair'); if (!bar) return;
+  const lost = orphanedChecks().length;
+  if (!lost || repairDismissed.has(state.activeId)) { bar.hidden = true; return; }
+  const one = lost === 1;
+  $('#repairText').textContent = repairTried.has(state.activeId)
+    ? `${one ? 'One check' : lost + ' checks'} could not be put back: ${one ? 'its' : 'their'} text is no longer in this page, or appears more than once.`
+    : `${one ? 'One check has' : lost + ' checks have'} lost ${one ? 'its' : 'their'} highlight, so there is nothing in the page to open ${one ? 'it' : 'them'} from.`;
+  $('#repairDo').hidden = repairTried.has(state.activeId);
+  bar.hidden = false;
+}
+
+function repairOrphanedChecks(){
+  const lost = orphanedChecks();
+  let placed = 0;
+  lost.forEach(id => {
+    const found = findQuote(editor, state.comments[id].quote);
+    if (found.count === 1 && found.range && markRange(found.range, id).length) placed++;
+  });
+  repairTried.add(state.activeId);
+  const left = lost.length - placed;
+  refreshCount();
+  if (placed) persist();
+  toast(!placed ? 'No highlight could be put back'
+    : left ? `Put back ${placed} of ${lost.length} highlights`
+    : placed === 1 ? 'Highlight put back' : `Put back ${placed} highlights`);
+}
+
+$('#repairDo').onclick = repairOrphanedChecks;
+$('#repairSkip').onclick = () => { repairDismissed.add(state.activeId); renderRepair(); };
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function decodeUnicode(s){ return (s||'').replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))); }
@@ -998,6 +1239,12 @@ function fixHighlightBoundary(e){
   mark.normalize();
   const full = mark.textContent;
 
+  // Pressing Enter at the end of a highlight splits the <mark>, leaving the new
+  // half wrapped around the blank line with no text in it. Left alone these
+  // accumulate, and every later selection crossing one fails to anchor — so the
+  // empty half is unwrapped the moment it appears.
+  if (!full.length) { unwrapEmptyMark(mark); return; }
+
   // deletions (and anything else) just resync the tracked length so a
   // later append is measured against the span's real current content.
   if (!e || !e.inputType || !e.inputType.startsWith('insert')) {
@@ -1038,6 +1285,40 @@ function fixHighlightBoundary(e){
   sel.removeAllRanges();
   sel.addRange(r);
 }
+
+/* Unwrap a highlight that has been emptied out, and put the caret back where
+   the mark was. */
+function unwrapEmptyMark(mark){
+  const parent = mark.parentNode; if (!parent) return;
+  const at = Array.prototype.indexOf.call(parent.childNodes, mark);
+  while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+  parent.removeChild(mark);
+  const r = document.createRange();
+  r.setStart(parent, Math.max(0, Math.min(at, parent.childNodes.length)));
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(r);
+}
+
+/* Paste and drop plain text only. Rich content carries the app's own
+   structural classes (.card, .body) and the browser's styling spans into the
+   prose, which both confuses what a selection is and leaves markup that later
+   highlights cannot be wrapped around. */
+function insertAsPlainText(text){
+  if (!text) return;
+  document.execCommand('insertText', false, text);
+}
+editor.addEventListener('paste', (e) => {
+  e.preventDefault();
+  insertAsPlainText((e.clipboardData || window.clipboardData)?.getData('text/plain') || '');
+});
+editor.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const at = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+  if (at) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(at); }
+  editor.focus();
+  insertAsPlainText(e.dataTransfer?.getData('text/plain') || '');
+});
 
 /* save on prose edits */
 editor.addEventListener('input', (e) => { fixHighlightBoundary(e); persist(); });

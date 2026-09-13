@@ -28,6 +28,40 @@ The goal is active recall of small, detailed chunks, and progressively refining 
 
 You select (highlight) a span of what you wrote. That opens a comment thread against just that span — the surrounding text is sent along as context, but only the highlighted span is what gets assessed. The checker returns a verdict — `wrong`, `imprecise`, `missing`, or `solid` — plus a short note, rendered as a margin comment next to the highlighted text (comments can sit on the left or right side; that preference is remembered in `localStorage`).
 
+## Anchoring a check to its span
+
+A highlight is a **set** of `<mark>` elements sharing one comment id, not a single element.
+This is forced by the shape of the thing being marked: a span the reader selects can cross paragraph boundaries, and `Range.surroundContents()` cannot express that — it throws `InvalidStateError` on any range that partially selects a non-Text node rather than wrapping it.
+So the span is wrapped one text node at a time, and everything that acts on a highlight acts on all of its marks.
+
+Anchoring happens *before* the check is recorded.
+A check whose span could not be marked would be saved with nothing in the prose pointing at it, and to the reader that is indistinguishable from an answer that never arrived — the comment is reachable only by clicking its highlight.
+If no mark can be made the ask is refused and says so, rather than filing a check that will be invisible.
+
+Two things are kept out of the prose so that anchoring stays possible.
+Paste and drop insert plain text only, because rich content carries the app's own structural classes (`.card`, `.body`) and the browser's styling spans into the editor.
+And an empty `<mark>` is unwrapped the moment it appears: pressing Enter at the end of a highlight makes the browser split the mark and wrap the new blank line in the empty half, which then breaks every later selection that crosses it.
+Documents written before this are repaired on load.
+
+A selection in the editor is prose, whatever markup it happens to sit in; a comment card counts only when it is a real card in the stack (`#stack .card .body`).
+The pending selection and its context are published in one step and cleared whenever the offer is withdrawn, so a fresh range can never be paired with a stale quote.
+
+A highlight inside a comment card is the one case a `<mark>` cannot survive, because `renderCardBody` rebuilds that markup from scratch.
+Those are stored as `anchor: {start, end}` offsets into the parent card's text and re-wrapped each time the card is drawn.
+A question asked before anchors were recorded has only its quote, so it is located in the rebuilt card text instead — no action needed from the reader, since a card question is only ever seen when its card is drawn.
+
+### Putting a lost highlight back
+
+Checks saved by earlier builds can have no mark anywhere in the prose, which makes them unopenable: a comment is reached by clicking its highlight.
+Those are detected on load and offered back through a notice in the document itself, and nothing moves until it is asked for.
+
+The quote is a sound place to put a check back, because the note was written *about* the quote the check recorded — even where that quote was the wrong one, the assessment and the text it names still agree.
+Whitespace is normalised on both sides before matching, since a quote recorded from a selection renders block boundaries as newlines the prose does not carry.
+A check is restored only where its quote appears **exactly once**; an ambiguous or absent quote is left alone and reported, because putting a check on the wrong sentence is worse than leaving it unplaced.
+
+Several checks can quote the same span — the stale-context defect filed three at a time that way — and all of them are restored, nested on that one span.
+The consequence is that a click reaches only the innermost; the alternative was dropping the later ones, and an anchored check the reader has to dig for beats a check with no highlight at all.
+
 ## The AI checker
 
 The prompt framing is the same on both surfaces: "a precise, generous tutor
@@ -56,6 +90,11 @@ and read back at boot to hydrate `state.library`. If persistence is unavailable
 it falls back to in-memory only for that session (no crash, just no save).
 `localStorage` is used separately, only for one UI preference (which side the
 comment panel opens from) — not document content.
+
+A comment carries an `anchor` only when it hangs off another comment rather than
+off the prose; prose anchors live in `editorHTML` as the marks themselves. The
+field is additive, so libraries written before it read back unchanged and the
+format stays `v: 1`.
 
 - **Artifact:** the JSON is written through `claude.use('artifact')` →
   `claudeArtifact.publish({'data/library.json': ...})` and read back from the
