@@ -1,0 +1,9 @@
+{
+  "id": "recall",
+  "name": "Recall",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "Check what you wrote from memory, span by span, without leaving your notes.",
+  "author": "Luke Conley",
+  "isDesktopOnly": true
+}

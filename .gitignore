@@ -1,1 +1,6 @@
+node_modules/
+/build-test/
+/main.js
+/data.json
+/checks/
 .DS_Store

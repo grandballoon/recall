@@ -1,0 +1,436 @@
+/* The verdict palette, and the two ways a highlight can be drawn.
+ *
+ * Ported from the shared UI so the same answer is the same colour on every
+ * surface: orange is wrong, yellow is imprecise, blue is missing, green is
+ * solid, and a check with no assessment yet stays neutral grey. Three of the
+ * four sit on a traffic light and `missing` deliberately does not — an
+ * incomplete answer is not a wrong one.
+ *
+ * The values are keyed to Obsidian's own variables where a theme should have
+ * a say (the prose ink, the surface behind it) and fixed where the verdict
+ * itself is the meaning. Redefined under `.theme-dark` rather than a media
+ * query, because Obsidian's theme is the user's choice, not the system's.
+ */
+.theme-light {
+  --v-none-wash: #e7e3d8;      --v-none-line: #7d7666;
+  --v-none-on: #ffffff;
+  --v-wrong-wash: #f8ddca;     --v-wrong-line: #b35a30;
+  --v-wrong-on: #ffffff;
+  --v-imprecise-wash: #f6e7bd; --v-imprecise-line: #c69a45;
+  --v-imprecise-on: #21262e;
+  --v-missing-wash: #dfe6f0;   --v-missing-line: #4f74a8;
+  --v-missing-on: #ffffff;
+  --v-solid-wash: #d9ebdb;     --v-solid-line: #467d4f;
+  --v-solid-on: #ffffff;
+}
+
+.theme-dark {
+  --v-none-wash: #333942;      --v-none-line: #6b7481;
+  --v-none-on: #ffffff;
+  --v-wrong-wash: #4d2c1e;     --v-wrong-line: #cd7448;
+  --v-wrong-on: #17191d;
+  --v-imprecise-wash: #4a3f22; --v-imprecise-line: #c69a45;
+  --v-imprecise-on: #17191d;
+  --v-missing-wash: #26364c;   --v-missing-line: #6f9ac8;
+  --v-missing-on: #17191d;
+  --v-solid-wash: #26412c;     --v-solid-line: #5f9e6b;
+  --v-solid-on: #17191d;
+}
+
+/* A wash under the prose with the verdict's colour underlining it. */
+.recall-check {
+  background: var(--v-none-wash);
+  color: var(--text-normal);
+  border-radius: 3px;
+  padding: 0.05em 0;
+  box-shadow: 0 1px 0 var(--v-none-line);
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+/* `is-lit` is the highlight whose card is open: it fills with its own
+   underline colour and takes the text colour that stays legible on it. */
+.recall-check.is-lit {
+  background: var(--v-none-line);
+  color: var(--v-none-on);
+  box-shadow: none;
+}
+
+.recall-check.recall-wrong { background: var(--v-wrong-wash); box-shadow: 0 1px 0 var(--v-wrong-line); }
+.recall-check.recall-imprecise { background: var(--v-imprecise-wash); box-shadow: 0 1px 0 var(--v-imprecise-line); }
+.recall-check.recall-missing { background: var(--v-missing-wash); box-shadow: 0 1px 0 var(--v-missing-line); }
+.recall-check.recall-solid { background: var(--v-solid-wash); box-shadow: 0 1px 0 var(--v-solid-line); }
+
+.recall-check.recall-wrong.is-lit { background: var(--v-wrong-line); color: var(--v-wrong-on); box-shadow: none; }
+.recall-check.recall-imprecise.is-lit { background: var(--v-imprecise-line); color: var(--v-imprecise-on); box-shadow: none; }
+.recall-check.recall-missing.is-lit { background: var(--v-missing-line); color: var(--v-missing-on); box-shadow: none; }
+.recall-check.recall-solid.is-lit { background: var(--v-solid-line); color: var(--v-solid-on); box-shadow: none; }
+
+/* ============================================================
+   THE LEAF
+   A panel, not a gutter. The margin-comment layout of the other
+   two surfaces does not survive the port, so the spacing here is
+   Obsidian's own — a Recall panel should sit beside Outline and
+   Backlinks without announcing itself as a stranger.
+   ============================================================ */
+/* Two regions: the cards scroll, and the box a question is typed into stays
+   put underneath them, the way it does in anything else you type questions
+   into. */
+.recall-leaf {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.recall-cards {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem 0.75rem 1rem;
+}
+
+.recall-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  padding: 1.5rem 0.25rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.recall-empty p { margin: 0; }
+
+.recall-section + .recall-section { margin-top: 1.25rem; }
+
+.recall-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.recall-section-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  margin: 0 0 0.6rem;
+}
+
+/* A file we could not read. Loud enough to be seen, because carrying on
+   quietly is the failure this whole store was built to avoid. */
+.recall-banner {
+  border-radius: var(--radius-s);
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 1rem;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  background: var(--background-modifier-error-hover);
+  border-left: 3px solid var(--text-error);
+}
+
+.recall-banner strong { display: block; margin-bottom: 0.25rem; }
+.recall-banner p { margin: 0; color: var(--text-muted); }
+
+/* ---------- cards ---------- */
+
+.recall-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--v-none-line);
+  border-radius: var(--radius-s);
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.6rem;
+}
+
+.recall-card.recall-wrong { border-left-color: var(--v-wrong-line); }
+.recall-card.recall-imprecise { border-left-color: var(--v-imprecise-line); }
+.recall-card.recall-missing { border-left-color: var(--v-missing-line); }
+.recall-card.recall-solid { border-left-color: var(--v-solid-line); }
+
+.recall-card.is-openable { cursor: pointer; }
+.recall-card.is-openable:hover { background: var(--background-modifier-hover); }
+
+/* The span the card is about, so a card is legible without going back to the
+   prose to find out what it refers to. */
+.recall-card-quote {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  font-style: italic;
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.recall-card-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+}
+
+.recall-verdict {
+  display: inline-block;
+  border-radius: var(--radius-s);
+  padding: 0.1em 0.5em;
+  margin-bottom: 0.4rem;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  background: var(--v-none-line);
+  color: var(--v-none-on);
+}
+
+.recall-verdict.recall-wrong { background: var(--v-wrong-line); color: var(--v-wrong-on); }
+.recall-verdict.recall-imprecise { background: var(--v-imprecise-line); color: var(--v-imprecise-on); }
+.recall-verdict.recall-missing { background: var(--v-missing-line); color: var(--v-missing-on); }
+.recall-verdict.recall-solid { background: var(--v-solid-line); color: var(--v-solid-on); }
+
+.recall-card-body {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.recall-card-body p { margin: 0 0 0.5em; }
+.recall-card-body p:last-child { margin-bottom: 0; }
+
+.recall-card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.recall-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 0.25em 0.7em;
+  height: auto;
+  cursor: pointer;
+}
+
+.recall-btn.is-ghost {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+
+.recall-btn.is-ghost:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ---------- threads ---------- */
+
+/* Depth stays inside the one leaf, as a card stack with a trail above it.
+   Nested leaves are out of scope: the reader drags panels where they want
+   them, and a plugin spawning its own is a fight with that. */
+.recall-back {
+  display: block;
+  margin-bottom: 0.6rem;
+  padding-left: 0;
+}
+
+.recall-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.15rem;
+  overflow-x: auto;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+
+.recall-crumbs::-webkit-scrollbar { display: none; }
+
+.recall-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  max-width: 11rem;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--radius-s);
+  padding: 0.15em 0.4em;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.recall-crumb:hover { background: var(--background-modifier-hover); }
+
+.recall-crumb.is-current {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  cursor: default;
+}
+
+.recall-crumb.is-current:hover { background: transparent; }
+
+.recall-crumb-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recall-crumb-sep {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+/* The verdict of each step in the trail, at a glance. */
+.recall-dot {
+  flex: 0 0 auto;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--v-none-line);
+}
+
+.recall-dot.recall-wrong { background: var(--v-wrong-line); }
+.recall-dot.recall-imprecise { background: var(--v-imprecise-line); }
+.recall-dot.recall-missing { background: var(--v-missing-line); }
+.recall-dot.recall-solid { background: var(--v-solid-line); }
+
+/* A span of an assessment that has itself been questioned. Same palette as a
+   highlight in the prose, because it means the same thing. */
+.recall-nested {
+  background: var(--v-none-wash);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--v-none-line);
+}
+
+.recall-nested.is-openable { cursor: pointer; }
+
+.recall-nested.recall-wrong { background: var(--v-wrong-wash); box-shadow: 0 1px 0 var(--v-wrong-line); }
+.recall-nested.recall-imprecise { background: var(--v-imprecise-wash); box-shadow: 0 1px 0 var(--v-imprecise-line); }
+.recall-nested.recall-missing { background: var(--v-missing-wash); box-shadow: 0 1px 0 var(--v-missing-line); }
+.recall-nested.recall-solid { background: var(--v-solid-wash); box-shadow: 0 1px 0 var(--v-solid-line); }
+
+.recall-card-hint {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+/* ---------- questions ---------- */
+
+/* What the reader asked, in full and in their own weight: the answer under it
+   is an answer to all of it. `pre-wrap` keeps the line breaks they typed. */
+.recall-card-question {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-bottom: 0.4rem;
+}
+
+/* A placeholder or an error where an answer should be. Not Claude's words, so
+   not in the voice an answer is in. */
+.recall-card-body.is-failed {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.recall-card-replies {
+  margin-top: 0.45rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* The conversation under a card, hung off it by a rule down the left so it
+   reads as belonging to the card above rather than as more cards in a list. */
+.recall-replies {
+  margin-left: 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.recall-replies .recall-card:last-child { margin-bottom: 0; }
+
+.recall-composer {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* The span the next question is about, in the same voice as the quote at the
+   top of a card, because it is about to become one. */
+.recall-composer-about {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.recall-composer-about.is-hidden { display: none; }
+
+.recall-composer-quote {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  font-style: italic;
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.recall-composer-drop {
+  flex: 0 0 auto;
+  padding: 0 0.4em;
+  line-height: 1.4;
+}
+
+.recall-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+/* Grows with what is typed, from script, up to this cap and then scrolls. */
+.recall-composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: 9rem;
+  resize: none;
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+
+/* ---------- settings ---------- */
+
+.recall-settings-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.recall-settings-status {
+  margin: 0.5rem 0 1rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  background: var(--background-secondary);
+}
+
+.recall-settings-status.is-warning {
+  background: var(--background-modifier-error-hover);
+  border-left: 3px solid var(--text-error);
+}

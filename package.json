@@ -1,0 +1,23 @@
+{
+  "name": "recall-obsidian",
+  "version": "0.1.0",
+  "description": "Recall as an Obsidian plugin",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "check": "tsc --noEmit",
+    "test": "rm -rf build-test && node esbuild.config.mjs test && node --test \"build-test/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@codemirror/state": "^6.7.5",
+    "@codemirror/view": "^6.43.12",
+    "@types/node": "^26.6.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.7.2",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.17"
+  }
+}
