@@ -5,19 +5,25 @@
 
 ## Features
 
-- The two surfaces have drifted, and the canonical one is the one that's behind.
-  `src/index.html` carries four changes the live artifact doesn't: backtick code
-  spans in response bodies, the literal-unicode-escape fix, the sidebar no longer
-  re-sorting on entry click, and the quoted span dropped from comment cards.
-  The artifact also still shows the leftover test blue dot.
-  Porting those back is a republish to the same artifact URL.
+- Run the plugin inside Obsidian for the first time, in a scratch vault.
+  Every assertion so far is headless; `spec.md` → *Open* lists the assumptions most likely to break.
+- Decide where an entry's prompt comes from (frontmatter key, note title, or something else).
 
 ## Later / ideas
+
+- Rebuild the artifact from scratch.
+  `3d2ce82:src/index.html` holds four fixes the frozen artifact never got, and the artifact still shows the leftover test blue dot.
 
 
 
 ## Done
 
+- 2026-10-26 — Recall is an Obsidian plugin now.
+  The Tauri desktop app (`src-tauri/`, `src/`, the macOS install script) is removed, and nothing depends on a webview shell.
+  The plugin, built in an untracked `obs_port/` since 2026-09-15, moved to the repo root: 164 headless assertions, tsc clean.
+  The artifact is frozen until it is rebuilt; its tests moved to `artifact/tests/` and drive `artifact/index.html` directly, 42 green.
+  `spec.md` and `data.md` rewritten for the plugin.
+  The unrelated triage and SRS plugins moved to their own repos under `~/Code/obsidian_plugins/`.
 - 2026-09-13 — A highlight now wears the answer it got back.
   Orange for `wrong`, yellow for `imprecise`, green for `solid`, and `missing`
   keeps the blue it already had on the card pill and the breadcrumb dot — three

@@ -1,205 +1,147 @@
 # Recall — Specification
 
-_Status: draft. Grounded in the live artifact's source (pulled 2026-09-02) and the
-revived Tauri desktop app that reuses it (2026-09-02)._
-
-## Surfaces
-
-Recall now ships on two surfaces that share one UI:
-
-- **Claude artifact** — canonical and live. AI checks run through `window.claude`'s
-  `sample` capability on the normal subscription; persistence uses the artifact's
-  own save-a-version mechanism. Source: `artifact/index.html`.
-- **Tauri desktop app** — a native window that serves the same UI from `src/`.
-  AI checks run against the user's own Anthropic API key (held in the OS keychain);
-  the library is persisted to a JSON file in the app data directory; a
-  user-chosen folder on disk holds source-material files. Backend: `src-tauri/`.
-
-The sections below describe the shared behaviour; where the two surfaces differ,
-both are called out.
+_Status: draft, being rewritten for the Obsidian plugin (2026-10-26).
+The Tauri desktop app is gone; the Claude artifact is frozen until it is rebuilt._
 
 ## What it is
 
-Recall ("a desk for testing what you know") is an active-recall study tool, in the Feynman-technique sense: you write an explanation of something from memory in a plain writing surface, then get it checked span by span rather than graded as a whole.
+Recall ("a desk for testing what you know") is an active-recall study tool, in the Feynman-technique sense.
+You write an explanation of something from memory, then get it checked span by span rather than graded as a whole.
+The goal is active recall of small, detailed chunks, and progressively refining one's own understanding.
 
-The goal is active recall of small, detailed chunks, and progressively refining one's own understanding. 
+You select a span of what you wrote and ask for a check.
+The surrounding note goes along as context, but only the span is assessed.
+The checker returns a verdict — `wrong`, `imprecise`, `missing`, or `solid` — plus a short note, shown as a card.
+Any part of a card can itself be selected and questioned, so checks nest into threads.
 
-## How it works
+## Surfaces
 
-You select (highlight) a span of what you wrote. That opens a comment thread against just that span — the surrounding text is sent along as context, but only the highlighted span is what gets assessed. The checker returns a verdict — `wrong`, `imprecise`, `missing`, or `solid` — plus a short note, rendered as a margin comment next to the highlighted text (comments can sit on the left or right side; that preference is remembered in `localStorage`).
+**The Obsidian plugin** is the product.
+It lives at the repo root: `src/`, `manifest.json`, `styles.css`.
+The vault is the library: a note is an entry, and the checks on it are kept beside it by the plugin.
+
+**The Claude artifact** (`artifact/index.html`) is frozen.
+It is still published and still works inside the Claude artifact runtime, through `window.claude` with no API key, and its end-to-end tests live in `artifact/tests/`.
+It will be rebuilt from scratch rather than kept in step with the plugin, so nothing in the plugin should be shaped around it.
+Four fixes that only the deleted desktop page carried are in history at `3d2ce82:src/index.html`: backtick code spans in responses, literal unicode escapes, the sidebar no longer re-sorting on click, and the quoted span dropped from cards.
+
+There are no webviews of our own.
+The plugin runs in Obsidian's renderer and the artifact runs in Claude's.
+
+## In a note
+
+### Asking
+
+A selection is checked from the editor context menu or the `check-selection` command.
+A question in the reader's own words is asked through `ask-selection`, `ask-note`, or the box at the foot of the leaf.
+Every command is unbound by default, so hotkeys are the reader's to assign.
+A span inside frontmatter is never checked, because frontmatter is metadata rather than writing.
 
 ### What a verdict looks like
 
-A verdict is shown in three places, and all three read from one palette so the same answer is the same colour wherever it appears: the highlight in the prose, the pill at the top of its card, and the dot in the breadcrumb trail.
+A verdict shows in three places, all read from one palette: the highlight in the note, the pill on its card, and the dot in the breadcrumb trail.
 Orange is `wrong`, yellow is `imprecise`, blue is `missing`, green is `solid`.
-Three of the four sit on one axis, and `missing` deliberately does not: an incomplete answer is not a wrong one, so it keeps the blue it already had in the pill and the dot rather than being forced onto the traffic light.
+`missing` deliberately sits off the traffic light: an incomplete answer is not a wrong one.
 
 A highlight with no verdict is neutral grey.
-That covers both the seconds a check is in flight and a check that failed or ran in demo mode, and it is the same reasoning that leaves the verdict blank on the card: colouring the prose before an assessment exists would report something about the writing that nothing has established.
+That covers a check in flight, a check that failed, a check in demo mode, and every question.
+Colouring the prose before an assessment exists would report something about the writing that nothing has established.
 
-The highlight whose card is open fills with its own underline colour.
-Each colour carries the text colour that stays legible on it — white on the darker fills, ink on yellow — rather than one shared choice that would fail on at least one of them.
-The colours live as `--v-<verdict>-{wash,line,ink,on}` custom properties defined once per theme, so the three renderings cannot drift apart and a theme change is one block.
-The verdict itself is held in state, not in the saved markup: marks are repainted from the record on load, so a document saved by an older build arrives coloured.
+The colours are `--v-<verdict>-{wash,line,ink,on}` custom properties in `styles.css`, redefined under `.theme-dark` and keyed to Obsidian's own variables so they survive community themes.
 
-## Anchoring a check to its span
+### Anchoring
 
-A highlight is a **set** of `<mark>` elements sharing one comment id, not a single element.
-This is forced by the shape of the thing being marked: a span the reader selects can cross paragraph boundaries, and `Range.surroundContents()` cannot express that — it throws `InvalidStateError` on any range that partially selects a non-Text node rather than wrapping it.
-So the span is wrapped one text node at a time, and everything that acts on a highlight acts on all of its marks.
+A highlight is a CM6 `Decoration.mark` in a `StateField`, registered with `registerEditorExtension`.
+CM6 maps decorations through every edit, so a highlight follows its text as the reader types, and text typed at either boundary falls outside it.
+Stored `{from, to}` offsets address the raw markdown, so they mean the same thing in Live Preview and Source mode.
 
-Anchoring happens *before* the check is recorded.
-A check whose span could not be marked would be saved with nothing in the prose pointing at it, and to the reader that is indistinguishable from an answer that never arrived — the comment is reachable only by clicking its highlight.
-If no mark can be made the ask is refused and says so, rather than filing a check that will be invisible.
+Losing a decoration never deletes a check.
+When an edit deletes a span, or a stored offset no longer fits, the check is re-anchored by its quote.
+A quote is used only where it appears exactly once; an ambiguous or absent one is listed in the leaf's unanchored section and moves nothing until asked.
 
-Two things are kept out of the prose so that anchoring stays possible.
-Paste and drop insert plain text only, because rich content carries the app's own structural classes (`.card`, `.body`) and the browser's styling spans into the editor.
-And an empty `<mark>` is unwrapped the moment it appears: pressing Enter at the end of a highlight makes the browser split the mark and wrap the new blank line in the empty half, which then breaks every later selection that crosses it.
-Documents written before this are repaired on load.
+Highlights exist only in editing views.
+In Reading mode the leaf is the only way to reach a note's checks, and a card offers "reveal in editor" rather than switching the reader's view for them.
 
-A selection in the editor is prose, whatever markup it happens to sit in; a comment card counts only when it is a real card in the stack (`#stack .card .body`).
-The pending selection and its context are published in one step and cleared whenever the offer is withdrawn, so a fresh range can never be paired with a stale quote.
+Every editor showing a note registers itself with a small registry, so a new check is broadcast to all of them.
+The plugin never reaches for the undocumented `editor.cm`.
 
-A highlight inside a comment card is the one case a `<mark>` cannot survive, because `renderCardBody` rebuilds that markup from scratch.
-Those are stored as `anchor: {start, end}` offsets into the parent card's text and re-wrapped each time the card is drawn.
-A question asked before anchors were recorded has only its quote, so it is located in the rebuilt card text instead — no action needed from the reader, since a card question is only ever seen when its card is drawn.
+### The leaf
 
-### Putting a lost highlight back
+One right-side `ItemView` lists the active note's checks and follows the reader between notes, the way Outline and Backlinks do.
+Clicking a check scrolls to its span and selects it.
+Depth stays inside the leaf as a card stack with a breadcrumb trail.
+Dismissing a check removes the thread hanging off it.
+Resolving one keeps the record but takes its highlight off the prose.
 
-Checks saved by earlier builds can have no mark anywhere in the prose, which makes them unopenable: a comment is reached by clicking its highlight.
-Those are detected on load and offered back through a notice in the document itself, and nothing moves until it is asked for.
+The box at the foot asks about whatever the reader is on: the note when the list is showing, the next line of an open thread, or a picked span.
+Enter breaks the line and Cmd+Enter (Ctrl+Enter) sends.
 
-The quote is a sound place to put a check back, because the note was written *about* the quote the check recorded — even where that quote was the wrong one, the assessment and the text it names still agree.
-Whitespace is normalised on both sides before matching, since a quote recorded from a selection renders block boundaries as newlines the prose does not carry.
-A check is restored only where its quote appears **exactly once**; an ambiguous or absent quote is left alone and reported, because putting a check on the wrong sentence is worse than leaving it unplaced.
+### Questions
 
-Several checks can quote the same span — the stale-context defect filed three at a time that way — and all of them are restored, nested on that one span.
-The consequence is that a click reaches only the innermost; the alternative was dropping the later ones, and an anchored check the reader has to dig for beats a check with no highlight at all.
+A question is a check with words on it, not a second kind of record.
+It is stored, threaded, retried and dismissed exactly like a check, and it never produces a verdict.
+A thread is stored as a tree and sent to Claude as a line: the question's ancestors, root first, with earlier follow-ups under the same card ahead of it.
+A card whose body is a placeholder or an error is never replayed, because that would put words in Claude's mouth.
+A span picked for a question is re-resolved when the question is sent, and refused out loud if its text is gone or no longer unique.
 
-## The AI checker
+## The checker
 
-The prompt framing is the same on both surfaces: "a precise, generous tutor
-helping someone test their understanding through active recall," assessing only
-the highlighted span and returning a typed verdict plus a short note.
+`src/checker/protocol.ts` is the wire contract as pure functions, and `src/checker/index.ts` is the only transport, over Obsidian's `requestUrl`.
+It calls the Anthropic Messages API directly with the reader's own key.
 
-- **Artifact:** the page calls Claude via `window.claude`'s `sample` capability —
-  billed against the normal Claude subscription, no separate API key.
-- **Desktop:** the webview calls a Tauri command (`claude_assess`), which reads
-  the stored API key and hits the Anthropic Messages API from Rust
-  (`src-tauri/src/claude.rs`): `claude-opus-5`, adaptive thinking, a JSON-schema
-  output constraint, and the server-side refusal fallback. The whole page is sent
-  and cached ahead of the span, so checking several spans of one unedited page
-  replays the prefix from cache. The API key never crosses back into the webview.
+A check sends the note's text, without frontmatter, as a cached prefix, and the span after it.
+Checking several spans of one unedited note therefore replays the prefix from cache.
+`![[transclusions]]` go as written rather than resolved, so an embedded note changing does not invalidate the cache.
+The answer is constrained by a JSON schema to `{verdict, note}`, with a fallback when the request is refused.
+A question uses its own system prompt and asks for plain prose, because a card's text has to keep its offsets for nested selection.
 
-If the checker can't be reached (capability/command unavailable, no key connected,
-or the call fails), both surfaces fall back to placeholder "demo mode" feedback
-rather than failing silently. A failed check leaves the verdict blank on purpose —
-the span was never assessed, so labelling the writing would misreport what happened.
+The default model is `claude-opus-5`.
+Effort is offered as the cheaper trade before a smaller model.
+Demo mode returns placeholder cards and spends nothing.
+A failed check leaves the verdict blank, because the span was never assessed.
 
-## Data model / persistence
+## The API key
 
-The whole library (all entries — prose, comment threads, verdicts, the library
-index) is serialized to a single JSON string, debounced ~1.2s after each edit,
-and read back at boot to hydrate `state.library`. If persistence is unavailable
-it falls back to in-memory only for that session (no crash, just no save).
-`localStorage` is used separately, only for one UI preference (which side the
-comment panel opens from) — not document content.
+A plugin is the renderer, so the key is in the renderer whatever we do, and Obsidian has no secret store.
+What is still ours to protect is the vault, which syncs and gets backed up.
+So the key lives in one file outside the vault, `~/.config/recall/key` (`%APPDATA%\recall\key` on Windows), written `0600`.
+The path is fixed rather than configurable, because a plugin that writes outside the vault has to justify it at review.
+A pasted key is verified against the chosen model before it is stored, and it is never shown back.
 
-A comment carries an `anchor` only when it hangs off another comment rather than
-off the prose; prose anchors live in `editorHTML` as the marks themselves. The
-field is additive, so libraries written before it read back unchanged and the
-format stays `v: 1`.
+## Persistence
 
-- **Artifact:** the JSON is written through `claude.use('artifact')` →
-  `claudeArtifact.publish({'data/library.json': ...})` and read back from the
-  `#recall-data` script tag the server embeds into the page.
-- **Desktop:** the JSON is written through the `library_save` Tauri command to
-  `library.json` in the app data directory (atomic temp-write + rename) and read
-  back through `library_load` at boot. The Rust side treats the string as opaque
-  bytes — the library's shape lives entirely in the webview, so the store never
-  changes when the document model does.
+Settings go to the plugin's `data.json` through `loadData` / `saveData`.
+Checks go to one file per note under the plugin folder, because `saveData` rewrites the whole file and checks change on every edit.
+A file that cannot be read is never written over, and the leaf says why.
+A deleted note keeps its checks, marked deleted, until a prune; restoring the note from the trash clears the mark.
+Renames are followed through `vault.on('rename')`.
+The shapes are in [data.md](data.md).
 
-### Not losing the library (desktop)
+## Build and ship
 
-Every save rewrites the whole library, so the newest write would otherwise be the only copy in existence.
-Two things guard against that.
+esbuild bundles `src/main.ts` to one `main.js`, with `obsidian`, `electron` and `@codemirror/*` external.
+`npm run build`, `npm run dev`, `npm run check` (tsc) and `npm test`; Node 20.17 or newer.
+Install by copying `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/recall/`.
 
-First, each save rotates the copy it replaces to `library.json.bak` before the new bytes land.
-The rotation is a rename rather than a copy, so it costs nothing at any library size and cannot fail halfway.
+The tests are headless.
+CM6 runs in Node, so the editor state under test is real; the disk is a `Map`.
+The test build marks nothing external, so a pure module that imports `obsidian` fails to build.
 
-Second, a library that cannot be read is never written over.
-`hydrateFromRaw` reports *why* it failed rather than returning a bare false, and only "nothing saved yet" leads to seeding a first entry.
-Unparseable content, content that isn't shaped like a library, and an unrecognised format version all put the app into **safe mode**: persistence is switched off for the session, a banner that cannot be dismissed says so, and a button reveals the file and its backup in Finder.
-The session still works — you can write in it — but only in memory.
+The plugin is written to the community-plugin review guidelines from the start: no `innerHTML`, no `editor.cm`, no global `app`, one network host, every command unbound.
+`isDesktopOnly` is true until someone has looked at the leaf at phone width; a read-only mobile path is already written.
 
-This matters because the failure it prevents is silent and total.
-Seeding a fresh library while persistence stayed on would save the seed over the library it had just failed to read, roughly a second later.
-The same applied to a bumped format version, which would have wiped every existing library on first launch of the new version.
+## Constraints
 
-## Files folder (desktop only)
+- The plugin stands on public Obsidian and CodeMirror API only.
+- Logic lives in pure modules tested headless; only `main.ts`, the leaf, the settings tab and the checker transport import `obsidian`.
+- The note stays clean markdown: no `==marks==`, no frontmatter written by us.
+- The API key never enters the vault.
+- The artifact keeps working inside the Claude artifact runtime, with `window.claude` and no API key, until it is rebuilt.
 
-The right-hand wing is a view onto a real folder on disk — source material to
-check yourself against: a paper, your own notes, a reference summary. It defaults
-to `~/Documents/Recall`, is changeable via a native folder picker, and the choice
-is remembered in `config.json` in the app data directory.
+## Open
 
-`files.rs` is a thin wrapper over `std::fs` on that one directory: `files_list`
-(regular files, newest first, dotfiles skipped), `files_import` (native
-multi-file picker → copy in, collision-suffixed), `files_open` / `files_reveal`
-(hand off to the OS via the opener plugin), `files_delete`. File names are
-constrained to a single path component, so nothing can be read or written outside
-the folder. The folder is a shared shelf — files are not yet associated with
-individual entries. Anything dropped into the folder from the file browser shows
-up on the next open; there is no watcher.
-
-## Installing the Mac app
-
-`scripts/install-macos.sh` builds the release bundle, installs it to `/Applications/Recall.app`, and puts it in the Dock.
-Re-running it replaces the installed copy in place, so the Dock tile keeps working and simply picks up the newer build.
-Pass `--no-dock` to skip the Dock step.
-The script refuses to replace anything at that path whose bundle identifier is not Recall's, so a name collision cannot cost another app.
-
-The app is signed with a Developer ID Application certificate when one is present in the keychain, and ad-hoc otherwise.
-This matters beyond Gatekeeper: the Keychain grants access to the stored Anthropic key by code signature, so a stable Developer ID signature means the key survives reinstalls, where an ad-hoc signature changes on every build and makes macOS ask again.
-The build is not notarized, which is fine for a locally built app — notarization only matters for a bundle that travels to another machine and arrives quarantined.
-
-The icon is an Icon Composer document, `src-tauri/icons/Recall.icon`, which the Tauri bundler compiles with `actool` into an `Assets.car` referenced by `CFBundleIconName`.
-This is the macOS 26 icon format: a background fill plus layered art that the system masks, shadows, and gives the Liquid Glass treatment, rather than a flat pre-rendered square.
-A legacy `.icns` is still generated from the same artwork and stays in the bundle as the pre-26 fallback.
-Regenerating that fallback means rendering the `.icon` to a PNG with Icon Composer's `ictool`, insetting it to Apple's classic 824-in-1024 grid, and running `cargo tauri icon` on the result.
-
-Typography is bundled rather than fetched.
-`src/fonts/` holds the Spectral and Inter woff2 files (latin and latin-ext only) and `src/fonts.css` declares them; both families are under the SIL Open Font License 1.1.
-A desktop app must not depend on a font CDN at launch, since offline it would quietly fall back to system faces and the whole page would shift.
-The artifact keeps using the Google Fonts link, because there the CDN is part of the runtime it already lives in.
-
-## Constraints / non-goals
-
-- The **artifact** must keep working entirely inside the Claude artifact runtime —
-  `window.claude` for AI access, no external API key.
-- The **desktop app** must keep the API key out of the webview: it lives in the OS
-  keychain and only ever crosses into Rust, never back to page content. The
-  frontend learns only whether a key is stored and which model checks run on.
-- Both surfaces share one UI. `src/index.html` is derived from `artifact/index.html`
-  and should track it — divergence is limited to the AI-check call, the
-  persistence call, and how fonts are loaded.
-
-## History
-
-This repo originally held a Tauri native-desktop-app version of Recall (Rust
-backend + API-key-based Claude access via the OS keychain). On 2026-09-02 that
-variant was set aside in favour of the Claude artifact, which had become
-canonical.
-
-Later the same day the Tauri harness was revived as a second delivery surface
-rather than a replacement. The old hand-written `src/index.html` was rebuilt from
-`artifact/index.html` (real `<html>` document, `claude.js` bridge, the API-key
-settings block folded back into the settings popup); the `sample` call was
-swapped for the `claude_assess` command and the artifact-publish persistence for
-`library_save`/`library_load`. The Rust `claude.rs` needed no changes — it was
-already a current Anthropic Messages API integration. `src-tauri/` and `src/` are
-no longer slated for `attic/`; both are live again.
-
-The previously-reserved right-hand wing was then wired to a files folder on disk
-(`files.rs`, `tauri-plugin-dialog` + `tauri-plugin-opener`), so source material
-lives in a real, user-chosen folder the app reads from and writes to.
+- **Nothing has been run inside Obsidian.** The first session in a scratch vault is the real verification gate. The assumptions most likely to be wrong are the ones read out of `obsidian.d.ts` rather than exercised: `frontmatterPosition`, `getRightLeaf` / `revealLeaf`, the Reading-to-Source switch, and whether `editorInfoField` knows its file when a view plugin is constructed.
+- **Prompts.** Where an entry's prompt comes from is undecided. A `recall-prompt` frontmatter key with the note title as fallback was proposed and not built.
+- **Obsidian Sync.** Not in use. Per-note files rewritten every few seconds want a two-device test if it is switched on.
+- **Mobile.** No key file to read there, so mobile could only ever be read-only.
+- **The artifact rebuild.** Scope and timing are open.
