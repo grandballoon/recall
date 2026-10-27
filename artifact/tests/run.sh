@@ -23,14 +23,19 @@ fi
 
 [ -x "${CHROME:-}" ] || { echo "no Chromium-based browser found (set CHROME=...)"; exit 2; }
 
-node "$ROOT/tests/serve.js" "$PORT" >/dev/null 2>&1 &
+# .cjs so the root package.json's "type": "module" cannot change how it loads.
+SERVER_LOG="$(mktemp)"
+node "$ROOT/tests/serve.cjs" "$PORT" >"$SERVER_LOG" 2>&1 &
 SERVER=$!
-trap 'kill "$SERVER" 2>/dev/null' EXIT
+trap 'kill "$SERVER" 2>/dev/null; wait "$SERVER" 2>/dev/null; rm -f "$SERVER_LOG"' EXIT
 
+UP=
 for _ in $(seq 1 50); do
-  curl -sf "http://127.0.0.1:$PORT/index.html" >/dev/null && break
+  curl -sf "http://127.0.0.1:$PORT/index.html" >/dev/null && { UP=1; break; }
   sleep 0.1
 done
+# Say so here, or a dead server surfaces later as "the driver did not run".
+[ -n "$UP" ] || { echo "the test server did not start:"; cat "$SERVER_LOG"; exit 2; }
 
 DOM="$("$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
   --virtual-time-budget=20000 --dump-dom \
