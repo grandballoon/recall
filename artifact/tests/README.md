@@ -2,7 +2,7 @@
 
 An end-to-end guard on the one thing that can make a check disappear: the `<mark>` elements that tie a comment to the span of text it is about.
 
-`./run.sh` serves the repo, loads `src/index.html` in headless Chromium, and drives it the way a person does — focus the editor, type through `execCommand` so `contenteditable` behaves as it really does, let `selectionchange` fire on its own, click the Ask button.
+`./run.sh` serves `artifact/`, loads `index.html` wrapped in a document the way the publisher wraps it, in headless Chromium, and drives it the way a person does — focus the editor, type through `execCommand` so `contenteditable` behaves as it really does, let `selectionchange` fire on its own, click the Ask button.
 Nothing is stubbed and no app code is imported; the driver reads the page's own globals the way a second classic script on the page can.
 
 It needs no toolchain.

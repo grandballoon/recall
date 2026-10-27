@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the lost-highlight repro against src/index.html in headless Chromium.
+# Runs the lost-highlight repro against artifact/index.html in headless Chromium.
 #
 # Uses a Chromium-based browser already on the machine and node's own http
 # module, so there is nothing to install. Exits non-zero while the bug is present.
@@ -28,13 +28,13 @@ SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null' EXIT
 
 for _ in $(seq 1 50); do
-  curl -sf "http://127.0.0.1:$PORT/src/claude.js" >/dev/null && break
+  curl -sf "http://127.0.0.1:$PORT/index.html" >/dev/null && break
   sleep 0.1
 done
 
 DOM="$("$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
   --virtual-time-budget=20000 --dump-dom \
-  "http://127.0.0.1:$PORT/src/index.html" 2>/dev/null)"
+  "http://127.0.0.1:$PORT/index.html" 2>/dev/null)"
 
 # The results sit in one <pre>; isolate it before reading lines, since the
 # first and last ones share a line with the surrounding markup.

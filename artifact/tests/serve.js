@@ -5,7 +5,11 @@
  * that injection: the driver runs inside the real page, against the real
  * globals, with real contenteditable behaviour underneath it.
  *
- * No dependencies on purpose — the repo has no JS toolchain, and a repro that
+ * The artifact is a fragment, and the publisher wraps it in a document with a
+ * doctype. It is wrapped the same way here, or Blink would lay it out in quirks
+ * mode and the colour and layout assertions would measure a page nobody sees.
+ *
+ * No dependencies on purpose — the page has no JS toolchain, and a repro that
  * needs one is a repro nobody runs.
  */
 const http = require('http');
@@ -24,16 +28,16 @@ const TYPES = {
 const server = http.createServer((req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]);
   const file = path.join(ROOT, rel);
-  // Nothing outside the repo is servable.
+  // Nothing outside artifact/ is servable.
   if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403).end(); return; }
 
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404).end('not found'); return; }
     const ext = path.extname(file);
     let body = buf;
-    if (rel === '/src/index.html') {
+    if (rel === '/index.html') {
       body = Buffer.from(
-        buf.toString('utf8').replace('</body>', '<script src="/tests/driver.js"></script>\n</body>')
+        '<!doctype html>\n' + buf.toString('utf8') + '\n<script src="/tests/driver.js"></script>\n'
       );
     }
     res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream' });
