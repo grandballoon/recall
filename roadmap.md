@@ -18,6 +18,26 @@
 
 ## Done
 
+- 2026-09-13 — A highlight now wears the answer it got back.
+  Orange for `wrong`, yellow for `imprecise`, green for `solid`, and `missing`
+  keeps the blue it already had on the card pill and the breadcrumb dot — three
+  of the four sit on a traffic light and the fourth honestly does not.
+  A check with no verdict yet, or one that failed or ran in demo mode, stays
+  neutral grey: colouring the prose before an assessment exists would report
+  something the app has not been told.
+  All three renderings of a verdict now read from one set of
+  `--v-<verdict>-{wash,line,ink,on}` custom properties per theme, so they cannot
+  drift; the verdict lives in state rather than in the saved markup, and marks are
+  repainted from the record on load, so older documents arrive coloured.
+  Two things were found and fixed on the way. The card's dark-theme verdict pills
+  were keyed to `[data-theme="dark"]`, which nothing in the app ever sets, so in
+  system dark mode they had been rendering light-on-dark since they were written.
+  And `<mark>` takes its text colour from the UA sheet, which is black — every
+  highlight in the dark theme was black text on a dark wash.
+  Five new assertions (I1–I5); I5 measures real rendered contrast for every
+  verdict, lit and unlit, pill and highlight, in both themes, and is what caught
+  the black-on-dark. 42 assertions green.
+  Both surfaces patched identically; Rust untouched.
 - 2026-09-13 — Checks stopped disappearing. AI responses kept arriving but left no
   highlight in the prose, and after a reload the check was gone; the real library
   on disk had 11 such orphans, 4 of them in the entry open at the time.

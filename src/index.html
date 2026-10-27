@@ -17,11 +17,27 @@
     --rule-strong: #d2ccbe;
     /* your own selection */
     --sel: #b9d0e8;
-    --sel-line: #5b83ad;
-    /* has feedback attached */
-    --note: #f0d9a8;
+    /* open-check amber: the unresolved count badge and the repair notice */
     --note-line: #c69a45;
     --note-wash: #fbf3df;
+    /* ---- what a check came back with ----
+       One palette for all three places a verdict shows: the highlight in the
+       prose, the pill on its card, and the dot in the breadcrumb trail.
+       -wash sits under text, -line underlines it (and fills the highlight
+       whose card is open), -ink is text on the wash, -on is text on a -line
+       fill — white where the line is dark enough to carry it, ink where it
+       is not. `none` is a check with no verdict: still waiting, or one whose
+       check never completed. */
+    --v-none-wash: #e7e3d8;      --v-none-line: #7d7666;
+    --v-none-ink: #6b6555;       --v-none-on: #ffffff;
+    --v-wrong-wash: #f8ddca;     --v-wrong-line: #b35a30;
+    --v-wrong-ink: #93482a;      --v-wrong-on: #ffffff;
+    --v-imprecise-wash: #f6e7bd; --v-imprecise-line: #c69a45;
+    --v-imprecise-ink: #7a5b1a;  --v-imprecise-on: #21262e;
+    --v-missing-wash: #dfe6f0;   --v-missing-line: #4f74a8;
+    --v-missing-ink: #3f5f8c;    --v-missing-on: #ffffff;
+    --v-solid-wash: #d9ebdb;     --v-solid-line: #467d4f;
+    --v-solid-ink: #3d6b45;      --v-solid-on: #ffffff;
     --accent: #3a6098;
     --danger: #b4694f;
     --shadow: 20px 0 60px -30px rgba(33,38,46,.28);
@@ -37,10 +53,18 @@
       --rule: #2c313a;
       --rule-strong: #3a414c;
       --sel: #274763;
-      --sel-line: #6f9ac8;
-      --note: #5a4a28;
       --note-line: #c69a45;
       --note-wash: #2a2620;
+      --v-none-wash: #333942;      --v-none-line: #6b7481;
+      --v-none-ink: #a3aab5;       --v-none-on: #ffffff;
+      --v-wrong-wash: #4d2c1e;     --v-wrong-line: #cd7448;
+      --v-wrong-ink: #e0a58f;      --v-wrong-on: #17191d;
+      --v-imprecise-wash: #4a3f22; --v-imprecise-line: #c69a45;
+      --v-imprecise-ink: #dcc07a;  --v-imprecise-on: #17191d;
+      --v-missing-wash: #26364c;   --v-missing-line: #6f9ac8;
+      --v-missing-ink: #9dbce0;    --v-missing-on: #17191d;
+      --v-solid-wash: #26412c;     --v-solid-line: #5f9e6b;
+      --v-solid-ink: #96c79e;      --v-solid-on: #17191d;
       --accent: #7ea6d8;
       --danger: #d08363;
       --shadow: 20px 0 60px -30px rgba(0,0,0,.6);
@@ -49,9 +73,19 @@
   :root[data-theme="dark"] {
     --paper: #1a1d22; --paper-edge: #23272e; --ink: #e7e4db; --ink-soft: #a3aab5;
     --ink-faint: #6f7783; --rule: #2c313a; --rule-strong: #3a414c;
-    --sel: #274763; --sel-line: #6f9ac8; --note: #5a4a28; --note-line: #c69a45;
+    --sel: #274763; --note-line: #c69a45;
     --note-wash: #2a2620; --accent: #7ea6d8; --danger: #d08363;
     --shadow: 20px 0 60px -30px rgba(0,0,0,.6);
+    --v-none-wash: #333942;      --v-none-line: #6b7481;
+    --v-none-ink: #a3aab5;       --v-none-on: #ffffff;
+    --v-wrong-wash: #4d2c1e;     --v-wrong-line: #cd7448;
+    --v-wrong-ink: #e0a58f;      --v-wrong-on: #17191d;
+    --v-imprecise-wash: #4a3f22; --v-imprecise-line: #c69a45;
+    --v-imprecise-ink: #dcc07a;  --v-imprecise-on: #17191d;
+    --v-missing-wash: #26364c;   --v-missing-line: #6f9ac8;
+    --v-missing-ink: #9dbce0;    --v-missing-on: #17191d;
+    --v-solid-wash: #26412c;     --v-solid-line: #5f9e6b;
+    --v-solid-ink: #96c79e;      --v-solid-on: #17191d;
   }
 
   * { box-sizing: border-box; }
@@ -248,13 +282,30 @@
   }
   #editor p { margin: 0 0 1.15em; }
 
+  /* A highlight wears the answer it got back. It stays neutral while the
+     check is out — colouring it before the verdict lands would say something
+     about the writing that nothing has established yet — then takes the
+     verdict's colour. `.lit` is the highlight whose card is open: it fills
+     with the underline colour and takes the text colour that stays legible
+     on it. Verdict comes from data-verdict, painted by paintMark(). */
   mark.hl {
-    background: var(--sel); border-radius: 3px; padding: .05em 0;
-    box-shadow: 0 1px 0 var(--sel-line); cursor: pointer; transition: background .15s;
+    /* the UA sheet paints <mark> black on its own highlight colour, which in
+       the dark theme is black text on a dark wash — the prose keeps its own
+       ink instead, on every wash below. */
+    background: var(--v-none-wash); color: var(--ink);
+    border-radius: 3px; padding: .05em 0;
+    box-shadow: 0 1px 0 var(--v-none-line); cursor: pointer;
+    transition: background .15s, box-shadow .15s;
   }
-  mark.hl.note { background: var(--note); box-shadow: 0 1px 0 var(--note-line); }
-  mark.hl.lit { background: var(--sel-line); color: #fff; box-shadow: none; }
-  mark.hl.note.lit { background: var(--note-line); color: #fff; }
+  mark.hl.lit { background: var(--v-none-line); color: var(--v-none-on); box-shadow: none; }
+  mark.hl[data-verdict="wrong"] { background: var(--v-wrong-wash); box-shadow: 0 1px 0 var(--v-wrong-line); }
+  mark.hl[data-verdict="imprecise"] { background: var(--v-imprecise-wash); box-shadow: 0 1px 0 var(--v-imprecise-line); }
+  mark.hl[data-verdict="missing"] { background: var(--v-missing-wash); box-shadow: 0 1px 0 var(--v-missing-line); }
+  mark.hl[data-verdict="solid"] { background: var(--v-solid-wash); box-shadow: 0 1px 0 var(--v-solid-line); }
+  mark.hl[data-verdict="wrong"].lit { background: var(--v-wrong-line); color: var(--v-wrong-on); box-shadow: none; }
+  mark.hl[data-verdict="imprecise"].lit { background: var(--v-imprecise-line); color: var(--v-imprecise-on); box-shadow: none; }
+  mark.hl[data-verdict="missing"].lit { background: var(--v-missing-line); color: var(--v-missing-on); box-shadow: none; }
+  mark.hl[data-verdict="solid"].lit { background: var(--v-solid-line); color: var(--v-solid-on); box-shadow: none; }
 
   /* floating ask button on selection */
   #asker {
@@ -303,10 +354,10 @@
     font-size: 12px; font-weight: 500; white-space: nowrap;
   }
   .crumb .vdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint); }
-  .crumb .vdot.wrong { background: #c0563a; }
-  .crumb .vdot.imprecise { background: #c69a45; }
-  .crumb .vdot.missing { background: #4f74a8; }
-  .crumb .vdot.solid { background: #4f8a58; }
+  .crumb .vdot.wrong { background: var(--v-wrong-line); }
+  .crumb .vdot.imprecise { background: var(--v-imprecise-line); }
+  .crumb .vdot.missing { background: var(--v-missing-line); }
+  .crumb .vdot.solid { background: var(--v-solid-line); }
   .crumb .txt { overflow: hidden; text-overflow: ellipsis; }
   .crumb:not(.current):hover { background: var(--paper); border-color: var(--rule); color: var(--ink); }
   .crumb.current { color: var(--ink); font-weight: 600; cursor: default; background: var(--paper); border-color: var(--rule-strong); }
@@ -340,14 +391,10 @@
     display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em;
     padding: 3px 9px; border-radius: 20px; margin-bottom: 12px;
   }
-  .verdict.wrong { background: #f5dfd7; color: #9a4830; }
-  .verdict.imprecise { background: #f3e6c4; color: #8a6b25; }
-  .verdict.missing { background: #dfe6f0; color: #3f5f8c; }
-  .verdict.solid { background: #dcebdd; color: #3d6b45; }
-  :root[data-theme="dark"] .verdict.wrong { background: #4a2b22; color: #e0a58f; }
-  :root[data-theme="dark"] .verdict.imprecise { background: #4a3f22; color: #dcc07a; }
-  :root[data-theme="dark"] .verdict.missing { background: #26364c; color: #9dbce0; }
-  :root[data-theme="dark"] .verdict.solid { background: #294a2f; color: #96c79e; }
+  .verdict.wrong { background: var(--v-wrong-wash); color: var(--v-wrong-ink); }
+  .verdict.imprecise { background: var(--v-imprecise-wash); color: var(--v-imprecise-ink); }
+  .verdict.missing { background: var(--v-missing-wash); color: var(--v-missing-ink); }
+  .verdict.solid { background: var(--v-solid-wash); color: var(--v-solid-ink); }
 
   .card .body { font-size: 14.5px; line-height: 1.62; color: var(--ink); }
   .card .body p { margin: 0 0 .85em; }
@@ -622,6 +669,7 @@ function loadEntry(id){
       return;
     }
     if (!m.dataset.len) m.dataset.len = String(m.textContent.length);
+    paintMark(m);
   });
   const pt = $('#promptText'); if (pt) pt.textContent = e.prompt || 'Untitled';
   closeWing('comments');
@@ -734,6 +782,19 @@ document.addEventListener('click', (ev) => {
    a highlight therefore acts on all of its marks. */
 function marksFor(id){ return document.querySelectorAll(`mark.hl[data-comment-id="${id}"]`); }
 
+/* Colour one mark from the verdict its check came back with. The verdict is
+   held in state, not in the markup, so a document written by an older build —
+   or by a build whose colours differ — is repainted from the record rather
+   than trusted to carry its own styling. `note` was that older build's class
+   for "has feedback attached"; it is dropped on sight. */
+function paintMark(mark){
+  const c = state.comments[mark.dataset.commentId];
+  mark.classList.remove('note');
+  if (c && c.verdict) mark.dataset.verdict = c.verdict;
+  else delete mark.dataset.verdict;
+}
+function paintMarks(id){ marksFor(id).forEach(paintMark); }
+
 function markRange(range, id){
   const root = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
     ? range.commonAncestorContainer
@@ -764,8 +825,9 @@ function markRange(range, id){
 
   return held.map(text => {
     const mark = document.createElement('mark');
-    mark.className = 'hl note';
+    mark.className = 'hl';
     mark.dataset.commentId = id;
+    paintMark(mark);
     text.parentNode.insertBefore(mark, text);
     mark.appendChild(text);
     mark.dataset.len = String(mark.textContent.length);
@@ -943,6 +1005,7 @@ async function runCheck(id, quote, fullText) {
   comment.verdict = result.verdict;
   comment.body = result.body;
   comment.pending = false;
+  paintMarks(id);
   renderCardBody(id);
   persist();
 }

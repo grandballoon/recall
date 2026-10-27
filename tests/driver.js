@@ -333,6 +333,104 @@
       Boolean(rebuiltH) && rebuiltH.textContent === 'built at startup',
       () => `landed on ${JSON.stringify(rebuiltH && rebuiltH.textContent)}`);
 
+    /* ============ I: a highlight wears the verdict its check came back with ==
+       The colour is the only report the prose itself makes, so it has to
+       follow the record — including for a document saved by a build that
+       wrote no colour at all — and it has to stay readable under the text
+       it sits on, in both themes. */
+    createEntry('Repro I', 'Repro I');
+    await settle();
+    const iEntry = activeEntry();
+    iEntry.editorHTML = `<div><mark class="hl note" data-comment-id="c1" data-len="18">The search path is</mark> configurable.</div>`;
+    iEntry.comments = {
+      c1: { id: 'c1', quote: 'The search path is', verdict: null, body: null,
+            parentId: null, targetKind: 'prose', pending: false },
+    };
+    iEntry.order = ['c1'];
+    iEntry.seq = 2;
+    loadEntry(iEntry.id);
+    await settle();
+    const iMark = () => marksFor('c1')[0];
+
+    check('I1 a check with no verdict leaves its highlight uncoloured',
+      Boolean(iMark()) && !iMark().hasAttribute('data-verdict'),
+      () => `data-verdict=${JSON.stringify(iMark() && iMark().dataset.verdict)}`);
+    check('I2 an older build\'s note class is dropped on the way in',
+      Boolean(iMark()) && !iMark().classList.contains('note'),
+      () => `class=${JSON.stringify(iMark() && iMark().className)}`);
+
+    const VERDICTS = ['wrong', 'imprecise', 'missing', 'solid'];
+    const painted = [];
+    for (const v of VERDICTS) {
+      state.comments.c1.verdict = v;
+      paintMarks('c1');
+      painted.push(iMark() && iMark().dataset.verdict);
+    }
+    check('I3 a verdict landing repaints the highlight in the prose',
+      painted.join(',') === VERDICTS.join(','), () => `painted ${painted.join(',')}`);
+
+    /* contrast, read off the rendered page rather than the stylesheet */
+    const rgb = (s) => {
+      const m = (s || '').match(/rgba?\(([^)]+)\)/);
+      return m ? m[1].split(',').slice(0, 3).map(Number) : null;
+    };
+    const lum = (c) => {
+      const f = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+      return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+    };
+    const ratio = (fg, bg) => {
+      const a = rgb(fg), b = rgb(bg);
+      if (!a || !b) return 0;
+      const hi = Math.max(lum(a), lum(b)), lo = Math.min(lum(a), lum(b));
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const READABLE = 4.5;
+
+    const shades = [], thin = [];
+    // Both palettes are pinned rather than inherited: the headless browser has
+    // a colour scheme of its own, and whichever one it is would otherwise be
+    // the only half of the theme this ever measures.
+    for (const theme of ['light', 'dark']) {
+      document.documentElement.setAttribute('data-theme', theme);
+      for (const v of [null].concat(VERDICTS)) {
+        state.comments.c1.verdict = v;
+        paintMarks('c1');
+        const m = iMark();
+        if (!m) continue;
+        // getComputedStyle mid-transition reports the colour on its way in,
+        // so the measurement is taken with the transition suppressed.
+        m.style.transition = 'none';
+        for (const lit of [false, true]) {
+          m.classList.toggle('lit', lit);
+          const cs = getComputedStyle(m);
+          const r = ratio(cs.color, cs.backgroundColor);
+          if (theme === 'light' && !lit) shades.push(cs.backgroundColor);
+          if (r < READABLE) thin.push(`${theme}/${v || 'none'}${lit ? '/open' : ''}=${r.toFixed(2)}`);
+        }
+        m.classList.remove('lit');
+        m.style.transition = '';
+      }
+      // the pill on the card carries the same verdict, in its own pairing
+      for (const v of VERDICTS) {
+        const pill = document.createElement('span');
+        pill.className = 'verdict ' + v;
+        pill.textContent = 'x';
+        document.body.appendChild(pill);
+        const cs = getComputedStyle(pill);
+        const r = ratio(cs.color, cs.backgroundColor);
+        if (r < READABLE) thin.push(`${theme}/${v}/pill=${r.toFixed(2)}`);
+        pill.remove();
+      }
+    }
+    document.documentElement.removeAttribute('data-theme');
+    state.comments.c1.verdict = null;
+    paintMarks('c1');
+
+    check('I4 every verdict gets its own colour',
+      shades.length === 5 && new Set(shades).size === 5, () => shades.join(' '));
+    check('I5 verdict colour stays readable wherever it is shown, in both themes',
+      thin.length === 0, () => `below ${READABLE}:1 — ${thin.join(', ')}`);
+
     note(`${failed} failing assertion(s)`);
   }
 

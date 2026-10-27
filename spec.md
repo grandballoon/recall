@@ -28,6 +28,20 @@ The goal is active recall of small, detailed chunks, and progressively refining 
 
 You select (highlight) a span of what you wrote. That opens a comment thread against just that span — the surrounding text is sent along as context, but only the highlighted span is what gets assessed. The checker returns a verdict — `wrong`, `imprecise`, `missing`, or `solid` — plus a short note, rendered as a margin comment next to the highlighted text (comments can sit on the left or right side; that preference is remembered in `localStorage`).
 
+### What a verdict looks like
+
+A verdict is shown in three places, and all three read from one palette so the same answer is the same colour wherever it appears: the highlight in the prose, the pill at the top of its card, and the dot in the breadcrumb trail.
+Orange is `wrong`, yellow is `imprecise`, blue is `missing`, green is `solid`.
+Three of the four sit on one axis, and `missing` deliberately does not: an incomplete answer is not a wrong one, so it keeps the blue it already had in the pill and the dot rather than being forced onto the traffic light.
+
+A highlight with no verdict is neutral grey.
+That covers both the seconds a check is in flight and a check that failed or ran in demo mode, and it is the same reasoning that leaves the verdict blank on the card: colouring the prose before an assessment exists would report something about the writing that nothing has established.
+
+The highlight whose card is open fills with its own underline colour.
+Each colour carries the text colour that stays legible on it — white on the darker fills, ink on yellow — rather than one shared choice that would fail on at least one of them.
+The colours live as `--v-<verdict>-{wash,line,ink,on}` custom properties defined once per theme, so the three renderings cannot drift apart and a theme change is one block.
+The verdict itself is held in state, not in the saved markup: marks are repainted from the record on load, so a document saved by an older build arrives coloured.
+
 ## Anchoring a check to its span
 
 A highlight is a **set** of `<mark>` elements sharing one comment id, not a single element.

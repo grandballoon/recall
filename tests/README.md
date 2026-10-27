@@ -42,7 +42,13 @@ G12 pins the deliberate choice on duplicates: several checks quoting one span ar
 **H — a card question saved before anchors existed.**
 Found by its quote in the rebuilt card text, so old nested questions need no repair action.
 
+**I — the colour a highlight wears.**
+The verdict is held in state, not in the saved markup, so a document arrives repainted from the record: I1 and I2 pin that on a document saved by a build that wrote a `note` class and no colour at all.
+I4 reads the rendered background rather than the stylesheet, which is the only way to catch a rule that parses but never matches.
+I5 measures the actual contrast of text against its own background for every verdict, lit and unlit, pill and highlight, in both themes — it was written against a page whose highlighted prose rendered black-on-dark, because `<mark>` takes its colour from the UA sheet unless something says otherwise.
+Both palettes are pinned with `data-theme` rather than inherited, since the headless browser has a colour scheme of its own and would otherwise leave half of it unmeasured.
+
 ## Passing is the point
 
 Every assertion here failed, or would have, against the code before the fix — except the five guards (A1, A2, B0, B1, B2) that pin behaviour which already worked.
-When changing anything that touches `markRange`, `fixHighlightBoundary`, `onSelectionChange` or `renderCardBody`, run this first.
+When changing anything that touches `markRange`, `paintMark`, `fixHighlightBoundary`, `onSelectionChange` or `renderCardBody`, run this first.
