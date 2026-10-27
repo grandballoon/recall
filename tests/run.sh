@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
-# Runs the lost-highlight repro against src/index.html in headless Chrome.
+# Runs the lost-highlight repro against src/index.html in headless Chromium.
 #
-# Uses the Chrome already on the machine and node's own http module, so there is
-# nothing to install. Exits non-zero while the bug is present.
+# Uses a Chromium-based browser already on the machine and node's own http
+# module, so there is nothing to install. Exits non-zero while the bug is present.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-8731}"
-CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 
-[ -x "$CHROME" ] || { echo "Chrome not found at $CHROME (set CHROME=...)"; exit 2; }
+# Any Chromium will do: the assertions measure Blink's behaviour, not Chrome's.
+# First match wins; CHROME overrides the search.
+if [ -z "${CHROME:-}" ]; then
+  for candidate in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Brave.app/Contents/MacOS/Brave Browser" \
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "$HOME"/Library/Caches/ms-playwright/chromium-*/chrome-mac*/*.app/Contents/MacOS/*; do
+    [ -x "$candidate" ] && { CHROME="$candidate"; break; }
+  done
+fi
+
+[ -x "${CHROME:-}" ] || { echo "no Chromium-based browser found (set CHROME=...)"; exit 2; }
 
 node "$ROOT/tests/serve.js" "$PORT" >/dev/null 2>&1 &
 SERVER=$!
